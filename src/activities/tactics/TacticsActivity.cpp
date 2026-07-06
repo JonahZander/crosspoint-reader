@@ -457,7 +457,7 @@ void TacticsActivity::loopTargetSelect() {
 }
 
 void TacticsActivity::loopPauseMenu() {
-  constexpr int OPTION_COUNT = 4;  // resume, end turn, restart, quit
+  constexpr int OPTION_COUNT = 8;  // resume, next unit, inspect, danger, refresh, end turn, restart, quit
   if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
       mappedInput.wasPressed(MappedInputManager::Button::Left)) {
     pauseSel = (pauseSel + OPTION_COUNT - 1) % OPTION_COUNT;
@@ -472,6 +472,7 @@ void TacticsActivity::loopPauseMenu() {
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
     mode = Mode::Cursor;
+    nextRefreshFull = true;  // leaving the full-screen menu
     requestUpdate();
     return;
   }
@@ -479,8 +480,27 @@ void TacticsActivity::loopPauseMenu() {
     switch (pauseSel) {
       case 0:  // resume
         mode = Mode::Cursor;
+        nextRefreshFull = true;
         break;
-      case 1:  // end turn
+      case 1:  // next unit
+        mode = Mode::Cursor;
+        nextRefreshFull = true;
+        jumpToNextReadyUnit();
+        break;
+      case 2:  // inspect unit/terrain under cursor
+        inspectUnit = game->isVisible(cursorX, cursorY) ? game->unitIndexAt(cursorX, cursorY) : -1;
+        mode = Mode::Inspect;
+        nextRefreshFull = true;
+        break;
+      case 3:  // toggle danger zones
+        dangerOverlay = !dangerOverlay;
+        if (dangerOverlay) game->computeDangerZones();
+        break;
+      case 4:  // manual full refresh
+        mode = Mode::Cursor;
+        nextRefreshFull = true;
+        break;
+      case 5:  // end turn
         for (int i = 0; i < game->unitCount(); i++) {
           if (game->unit(i).alive && game->unit(i).side == Side::Player) game->finishUnit(i);
         }
@@ -488,13 +508,18 @@ void TacticsActivity::loopPauseMenu() {
         lastAiStepMs = millis();
         std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
         mode = Mode::EnemyTurn;
+        nextRefreshFull = true;
         break;
-      case 2:  // restart
+      case 6:  // restart
         game->start(*level);
         selectedUnit = -1;
+        dangerOverlay = false;
+        deleteSave();
         mode = Mode::Cursor;
+        nextRefreshFull = true;
         break;
-      case 3:  // quit to level list
+      case 7:  // quit to level list
+        deleteSave();
         mode = Mode::LevelSelect;
         break;
       default:
@@ -575,6 +600,8 @@ void TacticsActivity::render(RenderLock&&) {
     renderLevelSelect();
   } else if (mode == Mode::Inspect) {
     renderInspect();
+  } else if (mode == Mode::PauseMenu) {
+    renderPauseMenu();
   } else {
     renderBoard();
     renderHud();
@@ -606,6 +633,56 @@ void TacticsActivity::renderLevelSelect() {
   }
   if (levelError[0] != '\0') {
     renderer.drawText(SMALL_FONT_ID, 20, renderer.getScreenHeight() - 100, levelError, true);
+  }
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void TacticsActivity::renderPauseMenu() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS_PAUSED));
+
+  int y = metrics.topPadding + metrics.headerHeight + 12;
+  char line[96];
+  // Objective + turn.
+  switch (level->win) {
+    case Tactics::WinCondition::CaptureBase:
+      std::snprintf(line, sizeof(line), "%s", tr(STR_TACTICS_OBJ_CAPTURE));
+      break;
+    case Tactics::WinCondition::Survive:
+      std::snprintf(line, sizeof(line), tr(STR_TACTICS_OBJ_SURVIVE), (int)level->turnLimit);
+      break;
+    default:
+      std::snprintf(line, sizeof(line), "%s", tr(STR_TACTICS_OBJ_DEFEAT_ALL));
+      break;
+  }
+  renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
+  y += renderer.getLineHeight(SMALL_FONT_ID) + 6;
+  if (level->turnLimit > 0) {
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_TURN_OF), game->turn(), (int)level->turnLimit);
+  } else {
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_TURN), game->turn());
+  }
+  renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
+  y += renderer.getLineHeight(SMALL_FONT_ID) + 14;
+
+  const char* options[8] = {
+      tr(STR_TACTICS_RESUME),
+      tr(STR_TACTICS_NEXT_UNIT),
+      tr(STR_TACTICS_INSPECT),
+      dangerOverlay ? tr(STR_TACTICS_DANGER_ON) : tr(STR_TACTICS_DANGER_OFF),
+      tr(STR_TACTICS_REFRESH),
+      tr(STR_TACTICS_END_TURN),
+      tr(STR_TACTICS_RESTART),
+      tr(STR_TACTICS_QUIT),
+  };
+  const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 12;
+  for (int i = 0; i < 8; i++) {
+    const bool sel = i == pauseSel;
+    if (sel) renderer.fillRect(12, y - 4, pageWidth - 24, lineH - 4, true);
+    renderer.drawText(UI_12_FONT_ID, 24, y, options[i], !sel);
+    y += lineH;
   }
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -826,19 +903,6 @@ void TacticsActivity::renderHud() {
     std::snprintf(line, sizeof(line), "%s", won ? tr(STR_TACTICS_VICTORY) : tr(STR_TACTICS_DEFEAT));
     renderer.drawText(UI_12_FONT_ID, 16, top + 12, line, true);
     renderer.drawText(SMALL_FONT_ID, 16, top + 52, turnBuf, true);
-    return;
-  }
-
-  if (mode == Mode::PauseMenu) {
-    const char* options[4] = {tr(STR_TACTICS_RESUME), tr(STR_TACTICS_END_TURN), tr(STR_TACTICS_RESTART),
-                              tr(STR_TACTICS_QUIT)};
-    const int w = pageWidth / 4;
-    for (int i = 0; i < 4; i++) {
-      const bool sel = i == pauseSel;
-      if (sel) renderer.fillRect(i * w, top + 6, w, HUD_HEIGHT - 12, true);
-      const int tw = renderer.getTextWidth(SMALL_FONT_ID, options[i]);
-      renderer.drawText(SMALL_FONT_ID, i * w + (w - tw) / 2, top + HUD_HEIGHT / 2 - 8, options[i], !sel);
-    }
     return;
   }
 
