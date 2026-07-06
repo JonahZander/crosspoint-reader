@@ -26,6 +26,7 @@
 #include "SimCanvas.h"
 #include "TacticsGame.h"
 #include "TacticsLevel.h"
+#include "TacticsSprites.h"
 
 using namespace Tactics;
 
@@ -107,18 +108,19 @@ void drawTerrain(SimCanvas& c, const int px, const int py, const Terrain t) {
 }
 
 void drawUnit(SimCanvas& c, const int px, const int py, const Unit& u) {
-  const int cx = px + TILE / 2;
-  const int cy = py + 20;
   const bool player = u.side == Side::Player;
-  if (player) {
-    c.fillCircle(cx, cy, 16, 255);
-    c.drawCircle(cx, cy, 16, 3, 0);
-  } else {
-    c.fillCircle(cx, cy, 16, 0);
+  // 16x16 sprite drawn 2x (32x32) on a plate: white plate + black pixels
+  // for the player, inverted for enemies.
+  const int ox = px + (TILE - 2 * SPRITE_SIZE) / 2;
+  const int oy = py + 3;
+  c.fillRect(ox - 2, oy - 2, 2 * SPRITE_SIZE + 4, 2 * SPRITE_SIZE + 4, player ? 255 : 0);
+  for (int sy = 0; sy < SPRITE_SIZE; sy++) {
+    for (int sx = 0; sx < SPRITE_SIZE; sx++) {
+      if (spritePixel(u.type, sx, sy)) {
+        c.fillRect(ox + sx * 2, oy + sy * 2, 2, 2, player ? 0 : 255);
+      }
+    }
   }
-  char glyph[3] = {u.info().glyph[0], u.info().glyph[1], 0};
-  const int tw = SimCanvas::textWidth(glyph, 2);
-  c.drawText(cx - tw / 2, cy - 7, glyph, 2, player ? 0 : 255);
   // HP bar
   const int barW = 36;
   const int fill = barW * u.hp / u.info().maxHp;

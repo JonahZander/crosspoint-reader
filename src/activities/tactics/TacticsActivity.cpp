@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <TacticsSprites.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -518,26 +519,26 @@ void TacticsActivity::drawTerrainTile(const int px, const int py, const Terrain 
 
 void TacticsActivity::drawUnitTile(const int px, const int py, const Unit& u) const {
   const bool player = u.side == Side::Player;
-  const int bx = px + 7;
-  const int by = py + 4;
-  const int bw = TILE - 14;
-  const int bh = 32;
-  if (player) {
-    renderer.fillRect(bx, by, bw, bh, false);
-    renderer.drawRect(bx, by, bw, bh, 3, true);
-  } else {
-    renderer.fillRect(bx, by, bw, bh, true);
+  // 16x16 sprite drawn 2x (32x32) on a plate: white plate with black
+  // pixels for player units, inverted for enemies. Sprites live in flash
+  // (TacticsSprites.h) and are shared with the host simulator.
+  const int ox = px + (TILE - 2 * Tactics::SPRITE_SIZE) / 2;
+  const int oy = py + 3;
+  renderer.fillRect(ox - 2, oy - 2, 2 * Tactics::SPRITE_SIZE + 4, 2 * Tactics::SPRITE_SIZE + 4, !player);
+  for (int sy = 0; sy < Tactics::SPRITE_SIZE; sy++) {
+    for (int sx = 0; sx < Tactics::SPRITE_SIZE; sx++) {
+      if (Tactics::spritePixel(u.type, sx, sy)) {
+        renderer.fillRect(ox + sx * 2, oy + sy * 2, 2, 2, player);
+      }
+    }
   }
-  char glyph[3] = {u.info().glyph[0], u.info().glyph[1], '\0'};
-  const int tw = renderer.getTextWidth(UI_10_FONT_ID, glyph);
-  renderer.drawText(UI_10_FONT_ID, px + TILE / 2 - tw / 2, by + 6, glyph, player);
   // HP bar
   const int barW = TILE - 12;
   const int fill = barW * u.hp / u.info().maxHp;
   renderer.drawRect(px + 6, py + TILE - 9, barW, 5, 1, true);
   renderer.fillRect(px + 6, py + TILE - 9, fill, 5, true);
   if (player && u.acted) {
-    renderer.fillRect(bx + bw - 8, by - 3, 8, 8, true);  // done marker
+    renderer.fillRect(px + TILE - 12, py + 2, 8, 8, true);  // done marker
   }
 }
 
