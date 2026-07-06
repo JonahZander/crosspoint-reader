@@ -28,6 +28,7 @@ class TacticsActivity final : public Activity {
  private:
   enum class Mode : uint8_t {
     LevelSelect,
+    StoryView,     // paged text from a .story file (campaign interludes)
     Cursor,        // free cursor, nothing selected
     MoveSelect,    // own unit selected, reach overlay shown
     TargetSelect,  // unit has moved, choosing an attack target
@@ -51,12 +52,35 @@ class TacticsActivity final : public Activity {
     Quit,
   };
 
-  // Level selection
+  // Level selection. The list holds both .yaml battles and .story text
+  // interludes, sorted by filename — that order *is* the campaign.
   void scanLevels();
   bool loadLevel(const std::string& fileName);
+  bool openEntry(int index);                  // dispatches story vs battle
+  void advanceAfter(const std::string& file); // campaign chain: open next entry
+  static bool isStoryFile(const std::string& name);
   std::vector<std::string> levelFiles;
   int levelSelIndex = 0;
   char levelError[96] = {0};
+
+  // Story viewer
+  bool loadStory(const std::string& fileName);
+  void loopStoryView();
+  void renderStoryView();
+  // Lays out one page starting at `offset`; draws when `draw`, returns the
+  // offset of the next page (== storySize when this was the last page).
+  size_t layoutStoryPage(size_t offset, bool draw);
+  std::unique_ptr<char[]> storyText;
+  size_t storySize = 0;
+  std::vector<uint32_t> storyPageStarts;
+  int storyPage = 0;
+  std::string currentStoryFile;
+
+  // Campaign completion markers (/.crosspoint/tactics/completed.txt)
+  void loadCompleted();
+  void markCompleted(const std::string& fileName);
+  bool isCompleted(const std::string& fileName) const;
+  std::vector<std::string> completedFiles;
 
   // Gameplay state (heap-allocated in onEnter, freed in onExit)
   std::unique_ptr<Tactics::Level> level;

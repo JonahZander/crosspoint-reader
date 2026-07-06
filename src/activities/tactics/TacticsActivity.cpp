@@ -27,9 +27,10 @@ constexpr uint32_t SAVE_MAGIC = 0x54534156;  // "TSAV"
 constexpr uint8_t SAVE_VERSION = 1;
 constexpr int TILE = 48;
 constexpr int HUD_HEIGHT = 96;
+constexpr const char* COMPLETED_FILE = "/.crosspoint/tactics/completed.txt";
 constexpr size_t MAX_LEVEL_FILE = 16 * 1024;
 constexpr unsigned long AI_STEP_MS = 650;
-constexpr int MAX_LEVEL_FILES = 32;
+constexpr int MAX_LEVEL_FILES = 64;  // battles + story interludes
 
 // Display names for unit types, indexed like Tactics::UNIT_TYPES.
 constexpr StrId UNIT_NAME_IDS[Tactics::UNIT_TYPE_COUNT] = {
@@ -153,7 +154,9 @@ void TacticsActivity::scanLevels() {
     file.getName(name, sizeof(name));
     const size_t len = std::strlen(name);
     if (name[0] == '.') continue;
-    if (len < 6 || std::strcmp(name + len - 5, ".yaml") != 0) continue;
+    const bool isLevel = len >= 6 && std::strcmp(name + len - 5, ".yaml") == 0;
+    const bool isStory = len >= 7 && std::strcmp(name + len - 6, ".story") == 0;
+    if (!isLevel && !isStory) continue;
     if (levelFiles.size() >= MAX_LEVEL_FILES) break;
     levelFiles.emplace_back(name);
   }
@@ -165,6 +168,220 @@ void TacticsActivity::scanLevels() {
     char path[128];
     std::snprintf(path, sizeof(path), "%s/%s.sav", SAVES_DIR, levelFiles[i].c_str());
     levelHasSave[i] = Storage.exists(path);
+  }
+  loadCompleted();
+}
+
+bool TacticsActivity::isStoryFile(const std::string& name) {
+  return name.size() >= 7 && name.compare(name.size() - 6, 6, ".story") == 0;
+}
+
+bool TacticsActivity::openEntry(const int index) {
+  if (index < 0 || index >= static_cast<int>(levelFiles.size())) return false;
+  const std::string& name = levelFiles[index];
+  if (isStoryFile(name)) return loadStory(name);
+  return loadLevel(name);
+}
+
+void TacticsActivity::advanceAfter(const std::string& file) {
+  // Files sort by name; the next one in order is the next campaign beat.
+  int idx = -1;
+  for (size_t i = 0; i < levelFiles.size(); i++) {
+    if (levelFiles[i] == file) {
+      idx = static_cast<int>(i);
+      break;
+    }
+  }
+  if (idx >= 0 && idx + 1 < static_cast<int>(levelFiles.size())) {
+    levelSelIndex = idx + 1;
+    if (openEntry(idx + 1)) {
+      requestUpdate();
+      return;
+    }
+  }
+  scanLevels();
+  mode = Mode::LevelSelect;
+  requestUpdate();
+}
+
+// ------------------------------------------------------------ story viewer
+
+bool TacticsActivity::loadStory(const std::string& fileName) {
+  levelError[0] = '\0';
+  const std::string path = std::string(LEVELS_DIR) + "/" + fileName;
+  HalFile file;
+  if (!Storage.openFileForRead("TACTICS", path, file)) {
+    std::snprintf(levelError, sizeof(levelError), "%s", tr(STR_TACTICS_LEVEL_ERROR));
+    return false;
+  }
+  const size_t size = file.fileSize();
+  if (size == 0 || size > MAX_LEVEL_FILE) {
+    LOG_ERR("TACTICS", "Story file size out of range: %u", (unsigned)size);
+    return false;
+  }
+  storyText = makeUniqueNoThrow<char[]>(size + 1);
+  if (!storyText) {
+    LOG_ERR("TACTICS", "OOM: %u bytes for story text", (unsigned)size);
+    return false;
+  }
+  if (file.read(storyText.get(), size) != static_cast<int>(size)) {
+    LOG_ERR("TACTICS", "Short read on %s", path.c_str());
+    storyText.reset();
+    return false;
+  }
+  // Normalise line endings in place.
+  size_t w = 0;
+  for (size_t r = 0; r < size; r++) {
+    if (storyText[r] != '\r') storyText[w++] = storyText[r];
+  }
+  storySize = w;
+  storyText[w] = '\0';
+  currentStoryFile = fileName;
+
+  storyPageStarts.clear();
+  storyPageStarts.reserve(8);
+  storyPageStarts.push_back(0);
+  for (size_t off = layoutStoryPage(0, false); off < storySize;) {
+    storyPageStarts.push_back(static_cast<uint32_t>(off));
+    const size_t next = layoutStoryPage(off, false);
+    if (next <= off) break;  // safety: layout must always advance
+    off = next;
+  }
+  storyPage = 0;
+  mode = Mode::StoryView;
+  return true;
+}
+
+size_t TacticsActivity::layoutStoryPage(size_t offset, const bool draw) {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  const int textW = pageWidth - 48;
+  int y = metrics.topPadding + metrics.headerHeight + 12;
+  const int limit = pageHeight - 56;
+  const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 8;
+  char lineBuf[128];
+
+  size_t i = offset;
+  while (i < storySize && y + lineH <= limit) {
+    if (storyText[i] == '\n') {  // blank line = paragraph spacing
+      i++;
+      y += lineH / 2;
+      continue;
+    }
+    const size_t lineStart = i;
+    int n = 0;
+    int lastSpace = -1;
+    while (i < storySize && storyText[i] != '\n' && n < static_cast<int>(sizeof(lineBuf)) - 1) {
+      lineBuf[n] = storyText[i];
+      if (storyText[i] == ' ') lastSpace = n;
+      lineBuf[n + 1] = '\0';
+      if (renderer.getTextWidth(UI_12_FONT_ID, lineBuf) > textW) {
+        if (lastSpace > 0) {
+          n = lastSpace;
+          i = lineStart + lastSpace + 1;  // resume after the space
+        } else if (n == 0) {
+          n = 1;  // single oversized glyph: force progress
+          i++;
+        }
+        break;
+      }
+      n++;
+      i++;
+    }
+    lineBuf[n] = '\0';
+    if (draw && n > 0) renderer.drawText(UI_12_FONT_ID, 24, y, lineBuf, true);
+    y += lineH;
+    if (i < storySize && storyText[i] == '\n') i++;  // line consumed its newline
+  }
+  return i;
+}
+
+void TacticsActivity::loopStoryView() {
+  const int pageCount = static_cast<int>(storyPageStarts.size());
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    mode = Mode::LevelSelect;
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Left) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
+    if (storyPage > 0) {
+      storyPage--;
+      requestUpdate();
+    }
+    return;
+  }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Down) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (storyPage + 1 < pageCount) {
+      storyPage++;
+      requestUpdate();
+    } else {
+      advanceAfter(currentStoryFile);  // story finished: next campaign beat
+    }
+  }
+}
+
+void TacticsActivity::renderStoryView() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS));
+  if (storyPage < static_cast<int>(storyPageStarts.size())) {
+    layoutStoryPage(storyPageStarts[storyPage], true);
+  }
+  char pageBuf[16];
+  std::snprintf(pageBuf, sizeof(pageBuf), tr(STR_TACTICS_PAGE), storyPage + 1,
+                static_cast<int>(storyPageStarts.size()));
+  const int tw = renderer.getTextWidth(SMALL_FONT_ID, pageBuf);
+  renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, pageHeight - 52, pageBuf, true);
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_TACTICS_CONTINUE), "", "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+// ------------------------------------------------------------ completion
+
+void TacticsActivity::loadCompleted() {
+  completedFiles.clear();
+  if (!Storage.exists(COMPLETED_FILE)) return;
+  HalFile file;
+  if (!Storage.openFileForRead("TACTICS", COMPLETED_FILE, file)) return;
+  const size_t size = file.fileSize();
+  if (size == 0 || size > 4096) return;
+  const auto buf = makeUniqueNoThrow<char[]>(size + 1);
+  if (!buf) return;
+  if (file.read(buf.get(), size) != static_cast<int>(size)) return;
+  buf[size] = '\0';
+  completedFiles.reserve(8);
+  size_t start = 0;
+  for (size_t i = 0; i <= size; i++) {
+    if (i == size || buf[i] == '\n') {
+      size_t len = i - start;
+      while (len > 0 && buf[start + len - 1] == '\r') len--;
+      if (len > 0) completedFiles.emplace_back(buf.get() + start, len);
+      start = i + 1;
+    }
+  }
+}
+
+bool TacticsActivity::isCompleted(const std::string& fileName) const {
+  for (const auto& f : completedFiles) {
+    if (f == fileName) return true;
+  }
+  return false;
+}
+
+void TacticsActivity::markCompleted(const std::string& fileName) {
+  if (isCompleted(fileName)) return;
+  completedFiles.push_back(fileName);
+  Storage.mkdir(SAVES_DIR);
+  HalFile file;
+  if (!Storage.openFileForWrite("TACTICS", COMPLETED_FILE, file)) return;
+  for (const auto& f : completedFiles) {
+    file.write(f.c_str(), f.size());
+    file.write("\n", 1);
   }
 }
 
@@ -299,6 +516,9 @@ void TacticsActivity::loop() {
     case Mode::LevelSelect:
       loopLevelSelect();
       break;
+    case Mode::StoryView:
+      loopStoryView();
+      break;
     case Mode::Cursor:
       loopCursor();
       break;
@@ -341,9 +561,7 @@ void TacticsActivity::loopLevelSelect() {
     requestUpdate();
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
-    if (loadLevel(levelFiles[levelSelIndex])) {
-      mode = Mode::Cursor;
-    }
+    openEntry(levelSelIndex);
     requestUpdate();
   }
 }
@@ -675,9 +893,21 @@ void TacticsActivity::loopInspect() {
 }
 
 void TacticsActivity::loopGameOver() {
-  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
-      mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+  const bool won = game->status() == Game::Status::Victory;
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (won) {
+      markCompleted(currentLevelFile);
+      advanceAfter(currentLevelFile);  // next campaign beat (story or battle)
+      return;
+    }
     scanLevels();  // refresh save markers
+    mode = Mode::LevelSelect;
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (won) markCompleted(currentLevelFile);
+    scanLevels();
     mode = Mode::LevelSelect;
     requestUpdate();
   }
@@ -689,6 +919,8 @@ void TacticsActivity::render(RenderLock&&) {
   renderer.clearScreen();
   if (mode == Mode::LevelSelect) {
     renderLevelSelect();
+  } else if (mode == Mode::StoryView) {
+    renderStoryView();
   } else if (mode == Mode::Inspect) {
     renderInspect();
   } else if (mode == Mode::PauseMenu) {
@@ -720,8 +952,10 @@ void TacticsActivity::renderLevelSelect() {
       const bool sel = first + i == levelSelIndex;
       if (sel) renderer.fillRect(8, y - 4, pageWidth - 16, lineH - 4, true);
       char nameBuf[80];
-      const bool hasSave = first + i < static_cast<int>(levelHasSave.size()) && levelHasSave[first + i];
-      std::snprintf(nameBuf, sizeof(nameBuf), "%s%s", hasSave ? "> " : "", levelFiles[first + i].c_str());
+      const int fileIdx = first + i;
+      const bool hasSave = fileIdx < static_cast<int>(levelHasSave.size()) && levelHasSave[fileIdx];
+      const char* marker = hasSave ? "> " : (isCompleted(levelFiles[fileIdx]) ? "* " : "");
+      std::snprintf(nameBuf, sizeof(nameBuf), "%s%s", marker, levelFiles[fileIdx].c_str());
       renderer.drawText(UI_12_FONT_ID, 20, y, nameBuf, !sel);
     }
   }
@@ -1040,6 +1274,10 @@ void TacticsActivity::renderHud() {
     std::snprintf(line, sizeof(line), "%s", won ? tr(STR_TACTICS_VICTORY) : tr(STR_TACTICS_DEFEAT));
     renderer.drawText(UI_12_FONT_ID, 16, top + 12, line, true);
     renderer.drawText(SMALL_FONT_ID, 16, top + 52, turnBuf, true);
+    if (won) {  // Confirm advances to the next campaign beat
+      const int tw = renderer.getTextWidth(SMALL_FONT_ID, tr(STR_TACTICS_CONTINUE));
+      renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 30, tr(STR_TACTICS_CONTINUE), true);
+    }
     return;
   }
 
