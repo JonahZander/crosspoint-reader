@@ -183,12 +183,17 @@ void TacticsActivity::loop() {
     case Mode::MoveSelect:
       loopMoveSelect();
       break;
+    case Mode::ActionSelect:
+      loopActionSelect();
+      break;
     case Mode::TargetSelect:
       loopTargetSelect();
       break;
     case Mode::PauseMenu:
       loopPauseMenu();
       break;
+    case Mode::Inspect:
+      break;  // wired up with the inspect panel below
     case Mode::EnemyTurn:
       loopEnemyTurn();
       break;
@@ -270,25 +275,79 @@ void TacticsActivity::loopMoveSelect() {
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     if (game->isReachable(cursorX, cursorY)) {
+      undoX = game->unit(selectedUnit).x;
+      undoY = game->unit(selectedUnit).y;
       game->moveUnit(selectedUnit, cursorX, cursorY);
       if (game->status() != Game::Status::Playing) {
+        deleteSave();
         mode = Mode::GameOver;  // stepped onto the enemy base
         requestUpdate();
         return;
       }
-      beginTargetSelect();
+      targetCount = game->targetsFrom(selectedUnit, cursorX, cursorY, targets, 8);
+      actionSel = 0;
+      mode = Mode::ActionSelect;
       requestUpdate();
     }
+  }
+}
+
+void TacticsActivity::deleteSave() {}  // filled in by the save/resume feature
+
+void TacticsActivity::undoSelectedMove() {
+  game->undoMove(selectedUnit, undoX, undoY);
+  cursorX = undoX;
+  cursorY = undoY;
+  if (dangerOverlay) game->computeDangerZones();  // fog changed with the undo
+  game->computeReach(selectedUnit);
+  ensureCursorVisible();
+  mode = Mode::MoveSelect;
+}
+
+void TacticsActivity::loopActionSelect() {
+  // Options: [Attack] Wait Undo — Attack present only with targets.
+  const int optionCount = targetCount > 0 ? 3 : 2;
+  if (mappedInput.wasPressed(MappedInputManager::Button::Left) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Up)) {
+    actionSel = (actionSel + optionCount - 1) % optionCount;
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Down)) {
+    actionSel = (actionSel + 1) % optionCount;
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    // Back is a shortcut for Undo.
+    undoSelectedMove();
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    const int action = targetCount > 0 ? actionSel : actionSel + 1;  // 0=Attack 1=Wait 2=Undo
+    switch (action) {
+      case 0:
+        beginTargetSelect();
+        break;
+      case 1:
+        finishSelectedUnit();
+        break;
+      case 2:
+        undoSelectedMove();
+        break;
+      default:
+        break;
+    }
+    requestUpdate();
   }
 }
 
 void TacticsActivity::beginTargetSelect() {
   const Unit& u = game->unit(selectedUnit);
   targetCount = game->targetsFrom(selectedUnit, u.x, u.y, targets, 8);
-  if (targetCount == 0) {
-    finishSelectedUnit();
-    return;
-  }
+  if (targetCount == 0) return;  // shouldn't happen: Attack is hidden without targets
   targetSel = 0;
   mode = Mode::TargetSelect;
 }
@@ -321,7 +380,9 @@ void TacticsActivity::loopTargetSelect() {
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
-    finishSelectedUnit();  // skip attacking
+    actionSel = 0;
+    mode = Mode::ActionSelect;  // back out to attack/wait/undo
+    requestUpdate();
     return;
   }
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -594,7 +655,8 @@ void TacticsActivity::renderBoard() {
     cx = game->unit(targets[targetSel]).x;
     cy = game->unit(targets[targetSel]).y;
   }
-  if (mode == Mode::Cursor || mode == Mode::MoveSelect || mode == Mode::TargetSelect) {
+  if (mode == Mode::Cursor || mode == Mode::MoveSelect || mode == Mode::ActionSelect ||
+      mode == Mode::TargetSelect) {
     const int px = (cx - camX) * TILE;
     const int py = (cy - camY) * TILE;
     renderer.drawRect(px, py, TILE, TILE, 3, true);
@@ -628,6 +690,22 @@ void TacticsActivity::renderHud() {
     const int w = pageWidth / 4;
     for (int i = 0; i < 4; i++) {
       const bool sel = i == pauseSel;
+      if (sel) renderer.fillRect(i * w, top + 6, w, HUD_HEIGHT - 12, true);
+      const int tw = renderer.getTextWidth(SMALL_FONT_ID, options[i]);
+      renderer.drawText(SMALL_FONT_ID, i * w + (w - tw) / 2, top + HUD_HEIGHT / 2 - 8, options[i], !sel);
+    }
+    return;
+  }
+
+  if (mode == Mode::ActionSelect) {
+    const char* options[3];
+    int n = 0;
+    if (targetCount > 0) options[n++] = tr(STR_TACTICS_ATTACK);
+    options[n++] = tr(STR_TACTICS_WAIT);
+    options[n++] = tr(STR_TACTICS_UNDO);
+    const int w = pageWidth / n;
+    for (int i = 0; i < n; i++) {
+      const bool sel = i == actionSel;
       if (sel) renderer.fillRect(i * w, top + 6, w, HUD_HEIGHT - 12, true);
       const int tw = renderer.getTextWidth(SMALL_FONT_ID, options[i]);
       renderer.drawText(SMALL_FONT_ID, i * w + (w - tw) / 2, top + HUD_HEIGHT / 2 - 8, options[i], !sel);

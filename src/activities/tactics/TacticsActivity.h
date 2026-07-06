@@ -30,8 +30,10 @@ class TacticsActivity final : public Activity {
     LevelSelect,
     Cursor,        // free cursor, nothing selected
     MoveSelect,    // own unit selected, reach overlay shown
-    TargetSelect,  // unit has moved, choosing an attack target
-    PauseMenu,     // end turn / restart / quit
+    ActionSelect,  // unit has moved: attack / wait / undo
+    TargetSelect,  // choosing an attack target
+    PauseMenu,     // full-screen menu: resume / next / inspect / ...
+    Inspect,       // full-screen unit + terrain panel
     EnemyTurn,
     GameOver,
   };
@@ -54,6 +56,10 @@ class TacticsActivity final : public Activity {
   int targetCount = 0;
   int targetSel = 0;
   int pauseSel = 0;
+  int actionSel = 0;
+  int8_t undoX = 0, undoY = 0;  // selected unit's pre-move position
+  bool dangerOverlay = false;
+  int inspectUnit = -1;  // -1 = terrain-only inspect
   unsigned long lastAiStepMs = 0;
   char statusLine[64] = {0};
   bool nextRefreshFull = false;
@@ -63,11 +69,16 @@ class TacticsActivity final : public Activity {
   void loopLevelSelect();
   void loopCursor();
   void loopMoveSelect();
+  void loopActionSelect();
   void loopTargetSelect();
   void loopPauseMenu();
+  void loopInspect();
   void loopEnemyTurn();
   void loopGameOver();
   bool moveCursor();  // shared cursor movement, returns true if moved
+  void undoSelectedMove();
+  int nearestReadyUnit(int fromX, int fromY) const;  // -1 if none
+  void jumpToNextReadyUnit();                        // cycles from cursor
 
   // Camera
   int viewCols() const;
@@ -81,8 +92,11 @@ class TacticsActivity final : public Activity {
   void renderLevelSelect();
   void renderBoard();
   void renderHud();
+  void renderPauseMenu();
+  void renderInspect();
   void drawTerrainTile(int px, int py, Tactics::Terrain t) const;
   void drawUnitTile(int px, int py, const Tactics::Unit& u) const;
   void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
+  void deleteSave();  // battle save management (see save/resume section)
 };
