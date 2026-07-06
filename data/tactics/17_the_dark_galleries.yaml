@@ -1,0 +1,35 @@
+# The Deep Road, battle 4 — find the war-nest in the sealed galleries.
+# A fogged cave crawl (aggro 4): rock walls split the galleries into a
+# north and a south route, both watched. The nest chamber in the east has
+# a single threshold — put a dwarf on it. The wyvern does not care about
+# your walls. 25 turns before the horde behind you catches up.
+name: Deep Road - The Dark Galleries
+win: capture_base
+turns: 25
+aggro: 4
+map: |
+  ##########################
+  #..........#.............#
+  #.^^........#............#
+  #.^.........#....####....#
+  #...........#....#..#....#
+  #....f......#....#B.#....#
+  #..........##....#..#....#
+  #................#..#....#
+  #.........##.....##.#....#
+  #.....f...#.......#.#....#
+  #.........#..~~...#......#
+  #.^^......#..~~..........#
+  #.^.......#..............#
+  ##########################
+units:
+  - {type: dwarf_warrior, at: [2, 6], side: player}
+  - {type: dwarf_thunderer, at: [2, 7], side: player}
+  - {type: dwarf_guard, at: [3, 6], side: player}
+  - {type: goblin, at: [8, 3], side: enemy}
+  - {type: goblin_slinger, at: [15, 2], side: enemy}
+  - {type: goblin, at: [7, 10], side: enemy}
+  - {type: goblin_slinger, at: [15, 11], side: enemy}
+  - {type: orc, at: [16, 7], side: enemy}
+  - {type: troll, at: [18, 7], side: enemy}
+  - {type: wyvern, at: [22, 5], side: enemy}

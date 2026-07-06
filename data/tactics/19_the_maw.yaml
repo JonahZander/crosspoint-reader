@@ -1,0 +1,30 @@
+# The Deep Road, battle 5 — the Maw. Finale.
+# A mountain ridge crosses the crater with one low gap: monsters funnel
+# through it or fly over it, while dwarves stride the ridge itself (cost 1,
+# +15 defense). The deep troll anchors the far side; break the horde on
+# your terms, then bring it down together — its regeneration laughs at
+# lone attackers.
+name: Deep Road - The Maw
+win: defeat_all
+aggro: 5
+map: |
+  ^^^^^^^^^^^^^^^^
+  ^..............^
+  ^..............^
+  ^.....^^^^.....^
+  ^^^^^^^..^^^^^^^
+  ^..............^
+  ^......f.......^
+  ^..............^
+  ^..............^
+  ^^^^^^^^^^^^^^^^
+units:
+  - {type: dwarf_warrior, at: [7, 1], side: player}
+  - {type: dwarf_thunderer, at: [8, 1], side: player}
+  - {type: dwarf_guard, at: [7, 2], side: player}
+  - {type: orc, at: [4, 6], side: enemy}
+  - {type: orc, at: [11, 6], side: enemy}
+  - {type: goblin_slinger, at: [6, 8], side: enemy}
+  - {type: goblin_slinger, at: [9, 8], side: enemy}
+  - {type: wyvern, at: [2, 7], side: enemy}
+  - {type: troll, at: [7, 7], side: enemy}

@@ -100,6 +100,21 @@ Authoring notes:
   tile — even with enemies alive next to it. Losing every unit (or
   running out the turn limit on non-survive missions) is defeat.
 
+## Story files and campaigns
+
+Plain-text `.story` files in `/tactics` sort alongside the `.yaml` battles,
+and that filename order **is** the campaign: after a victory, Continue opens
+the next file in order — story interlude or battle. Stories open in a paged
+viewer (page-turn buttons; Back skips at any time), completed battles get a
+`*` in the level list, and a battle in progress keeps its `>` resume marker.
+
+Conventions: prefix files with a sort number (`10_prologue.story`,
+`11_first_battle.yaml`, …), keep stories under 16 KB, separate paragraphs
+with blank lines. The shipped dwarf campaign **The Deep Road**
+(`10_…`–`20_…`) is the reference; its balance is enforced by automated
+playthroughs in `test/tactics/CampaignPlaytest.cpp` — if you tweak its
+levels, run the host tests.
+
 ## Playing on the desktop
 
 ```bash

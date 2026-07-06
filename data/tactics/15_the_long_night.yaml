@@ -1,0 +1,30 @@
+# The Deep Road, battle 3 — hold Grimwatch Ring until dawn.
+# Survive 12 turns. The castle heals and shields whoever holds it; the
+# mountain ring gives dwarves their +15 and cheap footing. Everything on
+# the map is already hunting you (aggro 30) and comes from all sides.
+name: Deep Road - The Long Night
+win: survive
+turns: 12
+aggro: 30
+map: |
+  ..............
+  ....^.....^...
+  ...^^..^..^^..
+  ..............
+  ...^...C...^..
+  ..............
+  ...^^..^..^^..
+  ....^.....^...
+  ..............
+  ..............
+units:
+  - {type: dwarf_guard, at: [7, 4], side: player}
+  - {type: dwarf_warrior, at: [6, 4], side: player}
+  - {type: dwarf_thunderer, at: [8, 4], side: player}
+  - {type: orc, at: [0, 0], side: enemy}
+  - {type: orc, at: [13, 9], side: enemy}
+  - {type: goblin, at: [13, 0], side: enemy}
+  - {type: goblin, at: [2, 9], side: enemy}
+  - {type: goblin, at: [0, 4], side: enemy}
+  - {type: goblin_slinger, at: [13, 4], side: enemy}
+  - {type: wyvern, at: [0, 9], side: enemy}

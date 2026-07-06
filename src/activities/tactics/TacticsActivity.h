@@ -56,8 +56,8 @@ class TacticsActivity final : public Activity {
   // interludes, sorted by filename — that order *is* the campaign.
   void scanLevels();
   bool loadLevel(const std::string& fileName);
-  bool openEntry(int index);                  // dispatches story vs battle
-  void advanceAfter(const std::string& file); // campaign chain: open next entry
+  bool openEntry(int index);                   // dispatches story vs battle
+  void advanceAfter(const std::string& file);  // campaign chain: open next entry
   static bool isStoryFile(const std::string& name);
   std::vector<std::string> levelFiles;
   int levelSelIndex = 0;
@@ -113,7 +113,7 @@ class TacticsActivity final : public Activity {
   void loopInspect();
   void loopEnemyTurn();
   void loopGameOver();
-  bool moveCursor();  // shared cursor movement, returns true if moved
+  bool moveCursor();                                 // shared cursor movement, returns true if moved
   int buildPauseActions(PauseAction* out) const;     // fills, returns count
   int nearestReadyUnit(int fromX, int fromY) const;  // -1 if none
   void jumpToNextReadyUnit();                        // cycles from cursor

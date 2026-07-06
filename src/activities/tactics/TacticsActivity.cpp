@@ -1104,8 +1104,7 @@ void TacticsActivity::renderInspect() {
 
   // Terrain block (always shown).
   if (y + lineH <= limit) {
-    renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true,
-                      EpdFontFamily::BOLD);
+    renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true, EpdFontFamily::BOLD);
     y += renderer.getLineHeight(UI_12_FONT_ID) + 6;
   }
   char defBuf[24] = {0};

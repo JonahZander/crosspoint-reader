@@ -1,0 +1,26 @@
+# The Deep Road, battle 2 — force the Blackmelt fords.
+# The river splits the map; only two fords cross it. Slingers watch the
+# crossings (aggro 4 — they hold position until you commit), orcs wait
+# behind. The forests and the eastern hills reward a careful approach.
+name: Deep Road - The Fords
+win: defeat_all
+aggro: 4
+map: |
+  ......~~......
+  ......~~......
+  ..............
+  ......~~......
+  ......~~......
+  ...f..~~..f...
+  ..............
+  ......~~..^^..
+  ......~~..^^..
+units:
+  - {type: dwarf_warrior, at: [2, 2], side: player}
+  - {type: dwarf_thunderer, at: [1, 4], side: player}
+  - {type: dwarf_guard, at: [2, 6], side: player}
+  - {type: goblin_slinger, at: [8, 2], side: enemy}
+  - {type: goblin_slinger, at: [8, 6], side: enemy}
+  - {type: orc, at: [12, 2], side: enemy}
+  - {type: orc, at: [12, 6], side: enemy}
+  - {type: goblin, at: [13, 4], side: enemy}
