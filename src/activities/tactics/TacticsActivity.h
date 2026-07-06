@@ -56,6 +56,8 @@ class TacticsActivity final : public Activity {
   int pauseSel = 0;
   unsigned long lastAiStepMs = 0;
   char statusLine[64] = {0};
+  bool nextRefreshFull = false;
+  uint8_t turnsSinceFullRefresh = 0;
 
   // Input handling per mode
   void loopLevelSelect();
