@@ -162,6 +162,41 @@ void TacticsActivity::centerCamera(const int x, const int y) {
   clampCamera();
 }
 
+int TacticsActivity::nearestReadyUnit(const int fromX, const int fromY) const {
+  int best = -1;
+  int bestDist = 1 << 20;
+  for (int i = 0; i < game->unitCount(); i++) {
+    const Unit& u = game->unit(i);
+    if (!u.alive || u.side != Side::Player || u.acted) continue;
+    const int dx = u.x > fromX ? u.x - fromX : fromX - u.x;
+    const int dy = u.y > fromY ? u.y - fromY : fromY - u.y;
+    if (dx + dy < bestDist) {
+      bestDist = dx + dy;
+      best = i;
+    }
+  }
+  return best;
+}
+
+void TacticsActivity::jumpToNextReadyUnit() {
+  // Cycle: first ready unit strictly after the one under the cursor, else wrap.
+  const int here = game->unitIndexAt(cursorX, cursorY);
+  int pick = -1;
+  for (int off = 1; off <= game->unitCount(); off++) {
+    const int i = (here >= 0 ? here + off : off - 1) % game->unitCount();
+    const Unit& u = game->unit(i);
+    if (u.alive && u.side == Side::Player && !u.acted) {
+      pick = i;
+      break;
+    }
+  }
+  if (pick < 0) return;
+  cursorX = game->unit(pick).x;
+  cursorY = game->unit(pick).y;
+  centerCamera(cursorX, cursorY);
+  requestUpdate();
+}
+
 void TacticsActivity::ensureCursorVisible() {
   if (cursorX < camX + 1) camX = cursorX - 1;
   if (cursorX > camX + viewCols() - 2) camX = cursorX - viewCols() + 2;
@@ -355,12 +390,19 @@ void TacticsActivity::beginTargetSelect() {
 void TacticsActivity::finishSelectedUnit() {
   if (selectedUnit >= 0) game->finishUnit(selectedUnit);
   selectedUnit = -1;
+  if (dangerOverlay) game->computeDangerZones();
   if (game->allPlayerUnitsActed()) {
     game->endPlayerTurn();
     lastAiStepMs = millis();
     std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
     mode = Mode::EnemyTurn;
   } else {
+    const int next = nearestReadyUnit(cursorX, cursorY);
+    if (next >= 0) {
+      cursorX = game->unit(next).x;
+      cursorY = game->unit(next).y;
+      ensureCursorVisible();
+    }
     mode = Mode::Cursor;
   }
   requestUpdate();
@@ -388,7 +430,9 @@ void TacticsActivity::loopTargetSelect() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     game->attack(selectedUnit, targets[targetSel]);
     selectedUnit = -1;
+    if (dangerOverlay) game->computeDangerZones();
     if (game->status() != Game::Status::Playing) {
+      deleteSave();
       mode = Mode::GameOver;
       requestUpdate();
       return;
@@ -399,6 +443,12 @@ void TacticsActivity::loopTargetSelect() {
       std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
       mode = Mode::EnemyTurn;
     } else {
+      const int next = nearestReadyUnit(cursorX, cursorY);
+      if (next >= 0) {
+        cursorX = game->unit(next).x;
+        cursorY = game->unit(next).y;
+        ensureCursorVisible();
+      }
       mode = Mode::Cursor;
     }
     requestUpdate();
@@ -473,14 +523,13 @@ void TacticsActivity::loopEnemyTurn() {
         char turnBuf[48];
         std::snprintf(turnBuf, sizeof(turnBuf), tr(STR_TACTICS_TURN), game->turn());
         std::snprintf(statusLine, sizeof(statusLine), "%s", turnBuf);
-        for (int u = 0; u < game->unitCount(); u++) {
-          if (game->unit(u).alive && game->unit(u).side == Side::Player) {
-            cursorX = game->unit(u).x;
-            cursorY = game->unit(u).y;
-            break;
-          }
+        const int next = nearestReadyUnit(cursorX, cursorY);
+        if (next >= 0) {
+          cursorX = game->unit(next).x;
+          cursorY = game->unit(next).y;
         }
         ensureCursorVisible();
+        if (dangerOverlay) game->computeDangerZones();
       }
       requestUpdate();
       return;
