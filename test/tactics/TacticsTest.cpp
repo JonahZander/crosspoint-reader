@@ -420,3 +420,50 @@ TEST(Ai, FullBattleTerminates) {
   EXPECT_NE(game.status(), Game::Status::Playing);
   EXPECT_LT(guard, 200);
 }
+
+// ---------------------------------------------------------------- undo
+
+TEST(Undo, RestoresPositionAndAllowsReMove) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  // Unit 0 = human_soldier at (1, 0).
+  game.computeReach(0);
+  ASSERT_TRUE(game.moveUnit(0, 3, 0));
+  EXPECT_EQ(game.unit(0).x, 3);
+  EXPECT_TRUE(game.undoMove(0, 1, 0));
+  EXPECT_EQ(game.unit(0).x, 1);
+  EXPECT_EQ(game.unit(0).y, 0);
+  EXPECT_FALSE(game.unit(0).acted);
+  // Unit can move again after undo.
+  game.computeReach(0);
+  EXPECT_TRUE(game.moveUnit(0, 2, 1));
+}
+
+TEST(Undo, RejectedAfterActing) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  game.computeReach(0);
+  ASSERT_TRUE(game.moveUnit(0, 3, 0));
+  game.finishUnit(0);
+  EXPECT_FALSE(game.undoMove(0, 1, 0));
+  EXPECT_EQ(game.unit(0).x, 3);
+}
+
+TEST(Undo, VisionRecedesButExploredStays) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  // Soldier vision 4 from (1,0): (7,0) is manhattan 6 — hidden at start.
+  ASSERT_FALSE(game.isVisible(7, 0));
+  game.computeReach(0);
+  ASSERT_TRUE(game.moveUnit(0, 4, 0));  // now (7,0) is manhattan 3 — visible
+  ASSERT_TRUE(game.isVisible(7, 0));
+  ASSERT_TRUE(game.undoMove(0, 1, 0));
+  EXPECT_FALSE(game.isVisible(7, 0));  // vision recedes
+  EXPECT_TRUE(game.isExplored(7, 0));  // explored layer is permanent
+}

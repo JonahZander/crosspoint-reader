@@ -141,6 +141,17 @@ bool Game::moveUnit(const int unitIdx, const int x, const int y) {
   return true;
 }
 
+bool Game::undoMove(const int unitIdx, const int x, const int y) {
+  Unit& u = units_[unitIdx];
+  if (!u.alive || u.acted || status_ != Status::Playing) return false;
+  if (x < 0 || y < 0 || x >= level_.width || y >= level_.height) return false;
+  u.x = static_cast<int8_t>(x);
+  u.y = static_cast<int8_t>(y);
+  reachUnit_ = -1;  // invalidate the movement cache
+  if (u.side == Side::Player) recomputeFog();
+  return true;
+}
+
 int Game::targetsFrom(const int unitIdx, const int x, const int y, int8_t* out, const int maxOut) const {
   const Unit& u = units_[unitIdx];
   int n = 0;
