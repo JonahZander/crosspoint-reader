@@ -1,0 +1,21 @@
+# First Blood — a small introductory skirmish. Everything is visible from
+# the start; learn the flow: select, move, attack, end turn.
+name: First Blood
+win: defeat_all
+aggro: 30
+map: |
+  ............
+  ..f......^..
+  ..ff....^^..
+  ............
+  ....~~......
+  ...f~~..f...
+  ............
+  ............
+units:
+  - {type: human_soldier, at: [1, 3], side: player}
+  - {type: human_archer, at: [0, 4], side: player}
+  - {type: human_knight, at: [1, 5], side: player}
+  - {type: goblin, at: [9, 2], side: enemy}
+  - {type: goblin, at: [10, 5], side: enemy}
+  - {type: orc, at: [10, 3], side: enemy}
