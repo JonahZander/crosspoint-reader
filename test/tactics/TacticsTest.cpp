@@ -499,3 +499,33 @@ TEST(DangerZones, VisibleAwakeEnemyMarksItsThreatRange) {
   // A tile far beyond move+range stays safe: (0,4).
   EXPECT_FALSE(game.isDangerous(0, 4));
 }
+
+// ---------------------------------------------------------------- state
+
+TEST(SaveState, RoundTripsMidBattle) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  game.computeReach(0);
+  ASSERT_TRUE(game.moveUnit(0, 3, 0));
+  game.finishUnit(0);
+
+  static uint8_t blob[sizeof(Game)];
+  ASSERT_EQ(Game::stateSize(), sizeof(Game));
+  game.exportState(blob);
+
+  Game restored;
+  ASSERT_TRUE(restored.importState(blob));
+  EXPECT_EQ(restored.unit(0).x, 3);
+  EXPECT_TRUE(restored.unit(0).acted);
+  EXPECT_EQ(restored.turn(), 1);
+  EXPECT_EQ(restored.status(), Game::Status::Playing);
+}
+
+TEST(SaveState, RejectsGarbage) {
+  static uint8_t blob[sizeof(Game)];
+  std::memset(blob, 0xAB, sizeof(blob));
+  Game g;
+  EXPECT_FALSE(g.importState(blob));
+}

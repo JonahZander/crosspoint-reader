@@ -6,6 +6,8 @@
 // The whole game state lives inside this object (~6KB), so the activity
 // allocates exactly one Game on the heap and nothing else. No allocation
 // happens inside the engine.
+#include <cstddef>
+
 #include "TacticsTypes.h"
 
 namespace Tactics {
@@ -85,6 +87,13 @@ class Game {
 
   // Effective % damage reduction for a unit standing on (x, y).
   int defenseAt(const Unit& u, int x, int y) const;
+
+  // Whole-state snapshot for battle save/resume. The Game object is
+  // trivially copyable (no pointers, no virtuals), so a raw byte copy is
+  // the entire serialisation; the caller owns file format/versioning.
+  static constexpr size_t stateSize() { return sizeof(Game); }
+  void exportState(void* out) const;
+  bool importState(const void* in);
 
  private:
   static int tileIndex(const int x, const int y) { return y * MAX_MAP_W + x; }

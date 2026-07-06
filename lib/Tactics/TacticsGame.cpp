@@ -1,6 +1,7 @@
 #include "TacticsGame.h"
 
 #include <cstring>
+#include <type_traits>
 
 namespace Tactics {
 
@@ -345,6 +346,24 @@ void Game::checkVictory() {
   } else if (!anyEnemy && level_.win == WinCondition::DefeatAll) {
     status_ = Status::Victory;
   }
+}
+
+void Game::exportState(void* out) const {
+  static_assert(std::is_trivially_copyable<Game>::value, "raw snapshot requires trivially copyable Game");
+  std::memcpy(out, this, sizeof(Game));
+}
+
+bool Game::importState(const void* in) {
+  // Validate in place before adopting: all fields read pre-copy are
+  // byte-sized or bounds-checked ints, and callers pass new-aligned
+  // buffers, so the cast read is alignment-safe on RISC-V.
+  const Game* src = static_cast<const Game*>(in);
+  if (src->unitCount_ < 1 || src->unitCount_ > MAX_UNITS) return false;
+  if (src->level_.width < 1 || src->level_.width > MAX_MAP_W) return false;
+  if (src->level_.height < 1 || src->level_.height > MAX_MAP_H) return false;
+  if (src->status_ != Status::Playing) return false;  // only mid-battle saves exist
+  std::memcpy(this, src, sizeof(Game));
+  return true;
 }
 
 void Game::wakePackNear(const int x, const int y) {
