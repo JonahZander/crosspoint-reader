@@ -58,7 +58,7 @@ units:
 |----|----|------|-----|-----|-----|-------|
 | `human_soldier`   | 30 | 5 | 8  | 1 | 10% | |
 | `human_archer`    | 24 | 5 | 7  | 2 | 5%  | |
-| `human_knight`    | 38 | 7 | 10 | 1 | 15% | fastest ground unit |
+| `human_knight`    | 38 | 5 | 10 | 1 | 15% | armored line-breaker |
 | `elf_fighter`     | 28 | 6 | 8  | 1 | 10% | forest bonus |
 | `elf_archer`      | 22 | 6 | 9  | 2 | 5%  | forest bonus |
 | `elf_mage`        | 20 | 5 | 11 | 2 | 0%  | forest bonus |
@@ -72,6 +72,16 @@ units:
 | `orc`             | 30 | 5 | 9  | 1 | 10% | |
 | `troll`           | 44 | 4 | 10 | 1 | 10% | regenerates 4 HP/turn |
 | `wyvern`          | 30 | 7 | 10 | 1 | 5%  | flies |
+| `goblin_slinger`  | 16 | 5 | 6  | 2 | 0%  | the monsters' only ranged unit |
+
+Authoring notes:
+
+- `goblin_slinger` punishes archer/mage kiting — melee-only monster rosters
+  can be poked to death from range 2 with zero counterattack risk. Mix a
+  slinger or two into open maps.
+- `troll` regen (4 HP/turn) makes it a 20+ turn grind for low-attack squads.
+  On `defeat_all` maps pair trolls with high-attack player units or use
+  another win condition; as a wall guarding a chokepoint it shines.
 
 ## Rules summary
 
