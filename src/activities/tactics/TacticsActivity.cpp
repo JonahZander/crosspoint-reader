@@ -88,7 +88,11 @@ bool TacticsActivity::saveBattle() {
   ok = ok && file.write(&levelCrc, sizeof(levelCrc)) == sizeof(levelCrc);
   ok = ok && file.write(&size, sizeof(size)) == sizeof(size);
   ok = ok && file.write(blob.get(), size) == size;
-  if (!ok) LOG_ERR("TACTICS", "Short write on %s", path);
+  if (!ok) {
+    LOG_ERR("TACTICS", "Short write on %s", path);
+  } else {
+    LOG_INF("TACTICS", "Battle saved: %s", path);
+  }
   return ok;
 }
 
@@ -606,8 +610,8 @@ void TacticsActivity::loopPauseMenu() {
         mode = Mode::Cursor;
         nextRefreshFull = true;
         break;
-      case 7:  // quit to level list
-        deleteSave();
+      case 7:  // quit to level list — keep the battle resumable
+        saveBattle();
         scanLevels();  // refresh save markers
         mode = Mode::LevelSelect;
         break;
