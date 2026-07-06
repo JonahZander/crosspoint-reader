@@ -136,6 +136,8 @@ bool TacticsActivity::loadLevel(const std::string& fileName) {
   centerCamera(cursorX, cursorY);
   std::snprintf(statusLine, sizeof(statusLine), "%s", level->name);
   mode = Mode::Cursor;
+  nextRefreshFull = true;  // fresh board on a clean panel
+  turnsSinceFullRefresh = 0;
   return true;
 }
 
@@ -403,6 +405,10 @@ void TacticsActivity::loopEnemyTurn() {
         mode = Mode::GameOver;
       } else {
         mode = Mode::Cursor;
+        if (++turnsSinceFullRefresh >= 5) {
+          turnsSinceFullRefresh = 0;
+          nextRefreshFull = true;  // wipe accumulated e-ink ghosting
+        }
         char turnBuf[48];
         std::snprintf(turnBuf, sizeof(turnBuf), tr(STR_TACTICS_TURN), game->turn());
         std::snprintf(statusLine, sizeof(statusLine), "%s", turnBuf);
@@ -451,7 +457,8 @@ void TacticsActivity::render(RenderLock&&) {
     renderBoard();
     renderHud();
   }
-  renderer.displayBuffer();
+  renderer.displayBuffer(nextRefreshFull ? HalDisplay::FULL_REFRESH : HalDisplay::FAST_REFRESH);
+  nextRefreshFull = false;
 }
 
 void TacticsActivity::renderLevelSelect() {
@@ -692,5 +699,16 @@ void TacticsActivity::renderHud() {
     const int vw = viewCols() * mmW / level->width;
     const int vh = viewRows() * mmH / level->height;
     renderer.drawRect(vx, vy, vw > 2 ? vw : 2, vh > 2 ? vh : 2, 1, true);
+    // Landmarks: explored castles and the enemy base as 3x3 dots.
+    for (int y = 0; y < level->height; y++) {
+      for (int x = 0; x < level->width; x++) {
+        const Terrain t = level->at(x, y);
+        if (t != Terrain::Castle && t != Terrain::EnemyBase) continue;
+        if (!game->isExplored(x, y)) continue;
+        const int lx = mmX + x * mmW / level->width;
+        const int ly = mmY + y * mmH / level->height;
+        renderer.fillRect(lx - 1, ly - 1, 3, 3, true);
+      }
+    }
   }
 }
