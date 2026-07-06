@@ -30,10 +30,12 @@ constexpr int MAX_LEVEL_FILES = 32;
 
 // Display names for unit types, indexed like Tactics::UNIT_TYPES.
 constexpr StrId UNIT_NAME_IDS[Tactics::UNIT_TYPE_COUNT] = {
-    STR_UNIT_HUMAN_SOLDIER, STR_UNIT_HUMAN_ARCHER,  STR_UNIT_HUMAN_KNIGHT,  STR_UNIT_ELF_FIGHTER,
-    STR_UNIT_ELF_ARCHER,    STR_UNIT_ELF_MAGE,      STR_UNIT_DWARF_WARRIOR, STR_UNIT_DWARF_THUNDERER,
-    STR_UNIT_DWARF_GUARD,   STR_UNIT_DRAKE_CLASHER, STR_UNIT_DRAKE_FLARE,   STR_UNIT_DRAKE_FLYER,
-    STR_UNIT_GOBLIN,        STR_UNIT_ORC,           STR_UNIT_TROLL,         STR_UNIT_WYVERN,
+    StrId::STR_UNIT_HUMAN_SOLDIER, StrId::STR_UNIT_HUMAN_ARCHER,  StrId::STR_UNIT_HUMAN_KNIGHT,
+    StrId::STR_UNIT_ELF_FIGHTER,   StrId::STR_UNIT_ELF_ARCHER,    StrId::STR_UNIT_ELF_MAGE,
+    StrId::STR_UNIT_DWARF_WARRIOR, StrId::STR_UNIT_DWARF_THUNDERER, StrId::STR_UNIT_DWARF_GUARD,
+    StrId::STR_UNIT_DRAKE_CLASHER, StrId::STR_UNIT_DRAKE_FLARE,   StrId::STR_UNIT_DRAKE_FLYER,
+    StrId::STR_UNIT_GOBLIN,        StrId::STR_UNIT_ORC,           StrId::STR_UNIT_TROLL,
+    StrId::STR_UNIT_WYVERN,
 };
 
 }  // namespace
@@ -243,7 +245,7 @@ void TacticsActivity::loopCursor() {
       selectedUnit = idx;
       game->computeReach(idx);
       mode = Mode::MoveSelect;
-      std::snprintf(statusLine, sizeof(statusLine), "%s", tr(UNIT_NAME_IDS[game->unit(idx).type]));
+      std::snprintf(statusLine, sizeof(statusLine), "%s", I18N.get(UNIT_NAME_IDS[game->unit(idx).type]));
       requestUpdate();
     }
   }
@@ -412,7 +414,7 @@ void TacticsActivity::loopEnemyTurn() {
     if (act.visible) {
       centerCamera(act.toX, act.toY);
       if (act.target >= 0) {
-        std::snprintf(statusLine, sizeof(statusLine), "%s -%d", tr(UNIT_NAME_IDS[game->unit(act.unit).type]),
+        std::snprintf(statusLine, sizeof(statusLine), "%s -%d", I18N.get(UNIT_NAME_IDS[game->unit(act.unit).type]),
                       act.damage);
       } else {
         std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
@@ -626,7 +628,8 @@ void TacticsActivity::renderHud() {
   // Right: unit under cursor (if visible), or attack forecast
   if (mode == Mode::TargetSelect && targetCount > 0) {
     const Game::Forecast f = game->forecast(selectedUnit, targets[targetSel]);
-    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d", tr(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
+    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d",
+                  I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
                   game->unit(targets[targetSel]).hp, f.damageToTarget, f.counterDamage);
     const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
     renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 30, line, true);
@@ -634,7 +637,7 @@ void TacticsActivity::renderHud() {
     const int ui = game->unitIndexAt(cursorX, cursorY);
     if (ui >= 0 && game->isVisible(cursorX, cursorY)) {
       const Unit& u = game->unit(ui);
-      std::snprintf(line, sizeof(line), "%s %d/%d", tr(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp);
+      std::snprintf(line, sizeof(line), "%s %d/%d", I18N.get(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp);
       const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
       renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 30, line, true);
     }
