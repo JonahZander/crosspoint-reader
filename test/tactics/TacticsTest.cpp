@@ -441,7 +441,9 @@ TEST(Undo, RestoresPositionAndAllowsReMove) {
   EXPECT_TRUE(game.moveUnit(0, 2, 1));
 }
 
-TEST(Undo, RejectedAfterActing) {
+TEST(Undo, RevertsAnActedPureMove) {
+  // Moves auto-commit (acted = true immediately); undo must un-commit.
+  // The activity is responsible for never undoing attacks or fog reveals.
   Level level;
   ASSERT_TRUE(parse(ARENA, level));
   Game game;
@@ -449,8 +451,10 @@ TEST(Undo, RejectedAfterActing) {
   game.computeReach(0);
   ASSERT_TRUE(game.moveUnit(0, 3, 0));
   game.finishUnit(0);
-  EXPECT_FALSE(game.undoMove(0, 1, 0));
-  EXPECT_EQ(game.unit(0).x, 3);
+  EXPECT_TRUE(game.unit(0).acted);
+  EXPECT_TRUE(game.undoMove(0, 1, 0));
+  EXPECT_EQ(game.unit(0).x, 1);
+  EXPECT_FALSE(game.unit(0).acted);  // ready to act again
 }
 
 TEST(Undo, VisionRecedesButExploredStays) {

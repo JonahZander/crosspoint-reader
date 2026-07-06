@@ -189,11 +189,15 @@ bool Game::moveUnit(const int unitIdx, const int x, const int y) {
 }
 
 bool Game::undoMove(const int unitIdx, const int x, const int y) {
+  // Moves auto-commit, so undo also un-commits (`acted` is cleared). The
+  // caller must enforce the gameplay rules: never undo an attack, a move
+  // that revealed new enemies, or anything after the enemy phase started.
   Unit& u = units_[unitIdx];
-  if (!u.alive || u.acted || status_ != Status::Playing) return false;
+  if (!u.alive || status_ != Status::Playing) return false;
   if (x < 0 || y < 0 || x >= level_.width || y >= level_.height) return false;
   u.x = static_cast<int8_t>(x);
   u.y = static_cast<int8_t>(y);
+  u.acted = false;
   reachUnit_ = -1;  // invalidate the movement cache
   if (u.side == Side::Player) recomputeFog();
   return true;

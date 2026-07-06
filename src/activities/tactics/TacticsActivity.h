@@ -30,12 +30,25 @@ class TacticsActivity final : public Activity {
     LevelSelect,
     Cursor,        // free cursor, nothing selected
     MoveSelect,    // own unit selected, reach overlay shown
-    ActionSelect,  // unit has moved: attack / wait / undo
-    TargetSelect,  // choosing an attack target
-    PauseMenu,     // full-screen menu: resume / next / inspect / ...
+    TargetSelect,  // unit has moved, choosing an attack target
+    PauseMenu,     // full-screen menu: resume / undo / next / inspect / ...
     Inspect,       // full-screen unit + terrain panel
     EnemyTurn,
     GameOver,
+  };
+
+  // Pause menu entries; the visible list is built per-state (Undo only
+  // appears while the last pure move is still revertible).
+  enum class PauseAction : uint8_t {
+    Resume,
+    UndoMove,
+    NextUnit,
+    Inspect,
+    Danger,
+    Refresh,
+    EndTurn,
+    Restart,
+    Quit,
   };
 
   // Level selection
@@ -56,8 +69,10 @@ class TacticsActivity final : public Activity {
   int targetCount = 0;
   int targetSel = 0;
   int pauseSel = 0;
-  int actionSel = 0;
-  int8_t undoX = 0, undoY = 0;  // selected unit's pre-move position
+  // Undo: the most recent pure move (no attack) can be reverted from the
+  // pause menu unless it revealed a new enemy or the enemy phase ran.
+  int undoUnit = -1;  // -1 = nothing to undo
+  int8_t undoX = 0, undoY = 0;
   bool dangerOverlay = false;
   int inspectUnit = -1;  // -1 = terrain-only inspect
   unsigned long lastAiStepMs = 0;
@@ -69,14 +84,13 @@ class TacticsActivity final : public Activity {
   void loopLevelSelect();
   void loopCursor();
   void loopMoveSelect();
-  void loopActionSelect();
   void loopTargetSelect();
   void loopPauseMenu();
   void loopInspect();
   void loopEnemyTurn();
   void loopGameOver();
   bool moveCursor();  // shared cursor movement, returns true if moved
-  void undoSelectedMove();
+  int buildPauseActions(PauseAction* out) const;     // fills, returns count
   int nearestReadyUnit(int fromX, int fromY) const;  // -1 if none
   void jumpToNextReadyUnit();                        // cycles from cursor
 
@@ -96,6 +110,7 @@ class TacticsActivity final : public Activity {
   void renderInspect();
   void drawTerrainTile(int px, int py, Tactics::Terrain t) const;
   void drawUnitTile(int px, int py, const Tactics::Unit& u) const;
+  void drawDangerSword(int px, int py) const;
   void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
 

@@ -65,9 +65,10 @@ class Game {
   void computeReach(int unitIdx);
   bool isReachable(int x, int y) const;
   bool moveUnit(int unitIdx, int x, int y);
-  // Reverts a not-yet-committed move (before attack/wait). Restores the
-  // pre-move position and recomputes fog; the explored layer is additive
-  // and deliberately keeps anything revealed by the trial move.
+  // Reverts a pure move: restores the pre-move position, clears `acted`,
+  // and recomputes fog (the explored layer stays — it is additive). The
+  // caller enforces the gameplay rules: attacks and fog-revealing moves
+  // must never be undone.
   bool undoMove(int unitIdx, int x, int y);
 
   // Combat. Targets are enemies within range of (x, y) for the given unit.
