@@ -33,19 +33,21 @@ constexpr int MAX_LEVEL_FILES = 32;
 
 // Display names for unit types, indexed like Tactics::UNIT_TYPES.
 constexpr StrId UNIT_NAME_IDS[Tactics::UNIT_TYPE_COUNT] = {
-    StrId::STR_UNIT_HUMAN_SOLDIER, StrId::STR_UNIT_HUMAN_ARCHER,  StrId::STR_UNIT_HUMAN_KNIGHT,
-    StrId::STR_UNIT_ELF_FIGHTER,   StrId::STR_UNIT_ELF_ARCHER,    StrId::STR_UNIT_ELF_MAGE,
-    StrId::STR_UNIT_DWARF_WARRIOR, StrId::STR_UNIT_DWARF_THUNDERER, StrId::STR_UNIT_DWARF_GUARD,
-    StrId::STR_UNIT_DRAKE_CLASHER, StrId::STR_UNIT_DRAKE_FLARE,   StrId::STR_UNIT_DRAKE_FLYER,
-    StrId::STR_UNIT_GOBLIN,        StrId::STR_UNIT_ORC,           StrId::STR_UNIT_TROLL,
-    StrId::STR_UNIT_WYVERN,        StrId::STR_UNIT_GOBLIN_SLINGER,
+    StrId::STR_UNIT_HUMAN_SOLDIER,  StrId::STR_UNIT_HUMAN_ARCHER,
+    StrId::STR_UNIT_HUMAN_KNIGHT,   StrId::STR_UNIT_ELF_FIGHTER,
+    StrId::STR_UNIT_ELF_ARCHER,     StrId::STR_UNIT_ELF_MAGE,
+    StrId::STR_UNIT_DWARF_WARRIOR,  StrId::STR_UNIT_DWARF_THUNDERER,
+    StrId::STR_UNIT_DWARF_GUARD,    StrId::STR_UNIT_DRAKE_CLASHER,
+    StrId::STR_UNIT_DRAKE_FLARE,    StrId::STR_UNIT_DRAKE_FLYER,
+    StrId::STR_UNIT_GOBLIN,         StrId::STR_UNIT_ORC,
+    StrId::STR_UNIT_TROLL,          StrId::STR_UNIT_WYVERN,
+    StrId::STR_UNIT_GOBLIN_SLINGER,
 };
 
 // Display names for terrain, indexed like Tactics::TERRAIN_INFO.
 constexpr StrId TERRAIN_NAME_IDS[Tactics::TERRAIN_COUNT] = {
-    StrId::STR_TERRAIN_VOID,     StrId::STR_TERRAIN_PLAIN, StrId::STR_TERRAIN_FOREST,
-    StrId::STR_TERRAIN_MOUNTAIN, StrId::STR_TERRAIN_WATER, StrId::STR_TERRAIN_ROCK,
-    StrId::STR_TERRAIN_CASTLE,   StrId::STR_TERRAIN_ENEMY_BASE,
+    StrId::STR_TERRAIN_VOID,  StrId::STR_TERRAIN_PLAIN, StrId::STR_TERRAIN_FOREST, StrId::STR_TERRAIN_MOUNTAIN,
+    StrId::STR_TERRAIN_WATER, StrId::STR_TERRAIN_ROCK,  StrId::STR_TERRAIN_CASTLE, StrId::STR_TERRAIN_ENEMY_BASE,
 };
 
 uint32_t fnv1a(const char* data, const size_t len) {
@@ -764,14 +766,10 @@ void TacticsActivity::renderPauseMenu() {
   y += renderer.getLineHeight(SMALL_FONT_ID) + 14;
 
   const char* options[8] = {
-      tr(STR_TACTICS_RESUME),
-      tr(STR_TACTICS_NEXT_UNIT),
-      tr(STR_TACTICS_INSPECT),
-      dangerOverlay ? tr(STR_TACTICS_DANGER_ON) : tr(STR_TACTICS_DANGER_OFF),
-      tr(STR_TACTICS_REFRESH),
-      tr(STR_TACTICS_END_TURN),
-      tr(STR_TACTICS_RESTART),
-      tr(STR_TACTICS_QUIT),
+      tr(STR_TACTICS_RESUME),  tr(STR_TACTICS_NEXT_UNIT),
+      tr(STR_TACTICS_INSPECT), dangerOverlay ? tr(STR_TACTICS_DANGER_ON) : tr(STR_TACTICS_DANGER_OFF),
+      tr(STR_TACTICS_REFRESH), tr(STR_TACTICS_END_TURN),
+      tr(STR_TACTICS_RESTART), tr(STR_TACTICS_QUIT),
   };
   const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 12;
   for (int i = 0; i < 8; i++) {
@@ -807,14 +805,13 @@ void TacticsActivity::renderInspect() {
         }
       }
     }
-    renderer.drawText(UI_12_FONT_ID, sx + Tactics::SPRITE_SIZE * 3 + 16, y + 8,
-                      I18N.get(UNIT_NAME_IDS[u.type]), true, EpdFontFamily::BOLD);
+    renderer.drawText(UI_12_FONT_ID, sx + Tactics::SPRITE_SIZE * 3 + 16, y + 8, I18N.get(UNIT_NAME_IDS[u.type]), true,
+                      EpdFontFamily::BOLD);
     std::snprintf(line, sizeof(line), tr(STR_TACTICS_HP), u.hp, info.maxHp);
     renderer.drawText(UI_12_FONT_ID, sx + Tactics::SPRITE_SIZE * 3 + 16, y + 8 + lineH, line, true);
     y += Tactics::SPRITE_SIZE * 3 + 24;
 
-    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STATLINE), info.attack, info.range, (int)info.defense,
-                  info.move);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STATLINE), info.attack, info.range, (int)info.defense, info.move);
     renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
     y += lineH;
     std::snprintf(line, sizeof(line), tr(STR_TACTICS_VISION), info.vision);
@@ -837,16 +834,15 @@ void TacticsActivity::renderInspect() {
       if (t == Terrain::Forest && info.race == Tactics::Race::Elf) racialDef = 15;
       if (t == Terrain::Mountain && info.race == Tactics::Race::Dwarf) racialDef = 15;
     }
-    std::snprintf(line, sizeof(line), tr(STR_TACTICS_DEF_BREAKDOWN), game->defenseAt(u, u.x, u.y),
-                  (int)info.defense, terrainDef, racialDef);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_DEF_BREAKDOWN), game->defenseAt(u, u.x, u.y), (int)info.defense,
+                  terrainDef, racialDef);
     renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
     y += lineH;
   }
 
   // Terrain block (always shown).
   y += 8;
-  renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true,
-                    EpdFontFamily::BOLD);
+  renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true, EpdFontFamily::BOLD);
   y += lineH;
   char defBuf[24] = {0};
   char movBuf[24] = {0};
@@ -973,8 +969,7 @@ void TacticsActivity::renderBoard() {
     cx = game->unit(targets[targetSel]).x;
     cy = game->unit(targets[targetSel]).y;
   }
-  if (mode == Mode::Cursor || mode == Mode::MoveSelect || mode == Mode::ActionSelect ||
-      mode == Mode::TargetSelect) {
+  if (mode == Mode::Cursor || mode == Mode::MoveSelect || mode == Mode::ActionSelect || mode == Mode::TargetSelect) {
     const int px = (cx - camX) * TILE;
     const int py = (cy - camY) * TILE;
     renderer.drawRect(px, py, TILE, TILE, 3, true);
@@ -1025,8 +1020,7 @@ void TacticsActivity::renderHud() {
   // Right: unit under cursor (if visible), or attack forecast
   if (mode == Mode::TargetSelect && targetCount > 0) {
     const Game::Forecast f = game->forecast(selectedUnit, targets[targetSel]);
-    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d",
-                  I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
+    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d", I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
                   game->unit(targets[targetSel]).hp, f.damageToTarget, f.counterDamage);
     const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
     renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 10, line, true);
@@ -1038,8 +1032,7 @@ void TacticsActivity::renderHud() {
       char stats[48];
       std::snprintf(stats, sizeof(stats), tr(STR_TACTICS_STATLINE), u.info().attack, u.info().range,
                     game->defenseAt(u, u.x, u.y), u.info().move);
-      std::snprintf(line, sizeof(line), "%s %d/%d  %s", I18N.get(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp,
-                    stats);
+      std::snprintf(line, sizeof(line), "%s %d/%d  %s", I18N.get(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp, stats);
       const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
       renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 10, line, true);
     }
@@ -1057,14 +1050,13 @@ void TacticsActivity::renderHud() {
       const char* racial = "";
       if (ui >= 0 && game->isVisible(cursorX, cursorY)) {
         const Unit& u = game->unit(ui);
-        if (!u.info().flies &&
-            ((t == Terrain::Forest && u.info().race == Tactics::Race::Elf) ||
-             (t == Terrain::Mountain && u.info().race == Tactics::Race::Dwarf))) {
+        if (!u.info().flies && ((t == Terrain::Forest && u.info().race == Tactics::Race::Elf) ||
+                                (t == Terrain::Mountain && u.info().race == Tactics::Race::Dwarf))) {
           racial = tr(STR_TACTICS_RACIAL_BONUS);
         }
       }
-      std::snprintf(line, sizeof(line), "%s  %s %s %s %s", I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]),
-                    defBuf, movBuf, healBuf, racial);
+      std::snprintf(line, sizeof(line), "%s  %s %s %s %s", I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), defBuf,
+                    movBuf, healBuf, racial);
       const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
       renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 50, line, true);
     }

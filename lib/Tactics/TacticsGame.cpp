@@ -75,8 +75,7 @@ void Game::computeDangerZones() {
     const int range = e.info().range;
     for (int y = 0; y < level_.height; y++) {
       for (int x = 0; x < level_.width; x++) {
-        const bool standable =
-            (x == e.x && y == e.y) || (reach_[tileIndex(x, y)] != UNREACHABLE && isReachable(x, y));
+        const bool standable = (x == e.x && y == e.y) || (reach_[tileIndex(x, y)] != UNREACHABLE && isReachable(x, y));
         if (!standable) continue;
         for (int dy = -range; dy <= range; dy++) {
           for (int dx = -range; dx <= range; dx++) {

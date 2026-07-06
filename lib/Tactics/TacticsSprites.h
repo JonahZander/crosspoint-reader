@@ -304,8 +304,6 @@ constexpr const char* UNIT_SPRITES[UNIT_TYPE_COUNT][SPRITE_SIZE] = {
 };
 // clang-format on
 
-inline bool spritePixel(const int type, const int x, const int y) {
-  return UNIT_SPRITES[type][y][x] == '#';
-}
+inline bool spritePixel(const int type, const int x, const int y) { return UNIT_SPRITES[type][y][x] == '#'; }
 
 }  // namespace Tactics
