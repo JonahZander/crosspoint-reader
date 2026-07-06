@@ -22,6 +22,9 @@ using Tactics::Unit;
 namespace {
 
 constexpr const char* LEVELS_DIR = "/tactics";
+constexpr const char* SAVES_DIR = "/.crosspoint/tactics";
+constexpr uint32_t SAVE_MAGIC = 0x54534156;  // "TSAV"
+constexpr uint8_t SAVE_VERSION = 1;
 constexpr int TILE = 48;
 constexpr int HUD_HEIGHT = 96;
 constexpr size_t MAX_LEVEL_FILE = 16 * 1024;
@@ -45,7 +48,71 @@ constexpr StrId TERRAIN_NAME_IDS[Tactics::TERRAIN_COUNT] = {
     StrId::STR_TERRAIN_CASTLE,   StrId::STR_TERRAIN_ENEMY_BASE,
 };
 
+uint32_t fnv1a(const char* data, const size_t len) {
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < len; i++) {
+    h ^= static_cast<uint8_t>(data[i]);
+    h *= 16777619u;
+  }
+  return h;
+}
+
 }  // namespace
+
+// ------------------------------------------------------------ save/resume
+
+void TacticsActivity::savePath(char* out, const size_t outLen) const {
+  std::snprintf(out, outLen, "%s/%s.sav", SAVES_DIR, currentLevelFile.c_str());
+}
+
+bool TacticsActivity::saveBattle() {
+  if (!game || game->status() != Game::Status::Playing || currentLevelFile.empty()) return false;
+  auto blob = makeUniqueNoThrow<uint8_t[]>(Game::stateSize());
+  if (!blob) {
+    LOG_ERR("TACTICS", "OOM: %u bytes for save", (unsigned)Game::stateSize());
+    return false;
+  }
+  game->exportState(blob.get());
+  Storage.mkdir(SAVES_DIR);
+  char path[128];
+  savePath(path, sizeof(path));
+  HalFile file;
+  if (!Storage.openFileForWrite("TACTICS", path, file)) return false;
+  const uint32_t magic = SAVE_MAGIC;
+  const uint8_t version = SAVE_VERSION;
+  const uint32_t size = Game::stateSize();
+  bool ok = file.write(&magic, sizeof(magic)) == sizeof(magic);
+  ok = ok && file.write(&version, sizeof(version)) == sizeof(version);
+  ok = ok && file.write(&levelCrc, sizeof(levelCrc)) == sizeof(levelCrc);
+  ok = ok && file.write(&size, sizeof(size)) == sizeof(size);
+  ok = ok && file.write(blob.get(), size) == size;
+  if (!ok) LOG_ERR("TACTICS", "Short write on %s", path);
+  return ok;
+}
+
+bool TacticsActivity::tryResumeBattle() {
+  char path[128];
+  savePath(path, sizeof(path));
+  if (!Storage.exists(path)) return false;
+  HalFile file;
+  if (!Storage.openFileForRead("TACTICS", path, file)) return false;
+  uint32_t magic = 0;
+  uint8_t version = 0;
+  uint32_t crc = 0;
+  uint32_t size = 0;
+  bool ok = file.read(&magic, sizeof(magic)) == sizeof(magic) && magic == SAVE_MAGIC;
+  ok = ok && file.read(&version, sizeof(version)) == sizeof(version) && version == SAVE_VERSION;
+  ok = ok && file.read(&crc, sizeof(crc)) == sizeof(crc) && crc == levelCrc;
+  ok = ok && file.read(&size, sizeof(size)) == sizeof(size) && size == Game::stateSize();
+  if (!ok) {
+    LOG_INF("TACTICS", "Stale/invalid save ignored: %s", path);
+    return false;
+  }
+  auto blob = makeUniqueNoThrow<uint8_t[]>(Game::stateSize());
+  if (!blob) return false;
+  if (file.read(blob.get(), size) != static_cast<int>(size)) return false;
+  return game->importState(blob.get());
+}
 
 // ------------------------------------------------------------ lifecycle
 
@@ -58,6 +125,8 @@ void TacticsActivity::onEnter() {
 
 void TacticsActivity::onExit() {
   Activity::onExit();
+  // Persist a battle in progress so the reader can be put down mid-fight.
+  if (game && mode != Mode::LevelSelect && mode != Mode::GameOver) saveBattle();
   game.reset();
   level.reset();
   levelFiles.clear();
@@ -84,6 +153,13 @@ void TacticsActivity::scanLevels() {
   }
   std::sort(levelFiles.begin(), levelFiles.end());
   if (levelSelIndex >= static_cast<int>(levelFiles.size())) levelSelIndex = 0;
+  // Mark levels with a battle in progress.
+  levelHasSave.assign(levelFiles.size(), false);
+  for (size_t i = 0; i < levelFiles.size(); i++) {
+    char path[128];
+    std::snprintf(path, sizeof(path), "%s/%s.sav", SAVES_DIR, levelFiles[i].c_str());
+    levelHasSave[i] = Storage.exists(path);
+  }
 }
 
 bool TacticsActivity::loadLevel(const std::string& fileName) {
@@ -122,7 +198,12 @@ bool TacticsActivity::loadLevel(const std::string& fileName) {
     std::snprintf(levelError, sizeof(levelError), "%s: %s", tr(STR_TACTICS_LEVEL_ERROR), err);
     return false;
   }
+  currentLevelFile = fileName;
+  levelCrc = fnv1a(buffer.get(), size);
+  // start() first, unconditionally: a rejected save must leave a playable
+  // fresh board.
   game->start(*level);
+  if (tryResumeBattle()) LOG_INF("TACTICS", "Resumed battle for %s", fileName.c_str());
 
   // Open on the first player unit.
   for (int i = 0; i < game->unitCount(); i++) {
@@ -328,7 +409,12 @@ void TacticsActivity::loopMoveSelect() {
   }
 }
 
-void TacticsActivity::deleteSave() {}  // filled in by the save/resume feature
+void TacticsActivity::deleteSave() {
+  if (currentLevelFile.empty()) return;
+  char path[128];
+  savePath(path, sizeof(path));
+  if (Storage.exists(path)) Storage.remove(path);
+}
 
 void TacticsActivity::undoSelectedMove() {
   game->undoMove(selectedUnit, undoX, undoY);
@@ -520,6 +606,7 @@ void TacticsActivity::loopPauseMenu() {
         break;
       case 7:  // quit to level list
         deleteSave();
+        scanLevels();  // refresh save markers
         mode = Mode::LevelSelect;
         break;
       default:
@@ -539,6 +626,7 @@ void TacticsActivity::loopEnemyTurn() {
     const Game::AiAction act = game->aiStep();
     if (!act.acted) {
       if (game->status() != Game::Status::Playing) {
+        deleteSave();
         mode = Mode::GameOver;
       } else {
         mode = Mode::Cursor;
@@ -556,6 +644,7 @@ void TacticsActivity::loopEnemyTurn() {
         }
         ensureCursorVisible();
         if (dangerOverlay) game->computeDangerZones();
+        saveBattle();  // checkpoint each completed enemy phase
       }
       requestUpdate();
       return;
@@ -568,7 +657,10 @@ void TacticsActivity::loopEnemyTurn() {
       } else {
         std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
       }
-      if (game->status() != Game::Status::Playing) mode = Mode::GameOver;
+      if (game->status() != Game::Status::Playing) {
+        deleteSave();
+        mode = Mode::GameOver;
+      }
       requestUpdate();
       return;
     }
@@ -587,6 +679,7 @@ void TacticsActivity::loopInspect() {
 void TacticsActivity::loopGameOver() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
       mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    scanLevels();  // refresh save markers
     mode = Mode::LevelSelect;
     requestUpdate();
   }
@@ -628,7 +721,10 @@ void TacticsActivity::renderLevelSelect() {
       const int y = top + i * lineH;
       const bool sel = first + i == levelSelIndex;
       if (sel) renderer.fillRect(8, y - 4, pageWidth - 16, lineH - 4, true);
-      renderer.drawText(UI_12_FONT_ID, 20, y, levelFiles[first + i].c_str(), !sel);
+      char nameBuf[80];
+      const bool hasSave = first + i < static_cast<int>(levelHasSave.size()) && levelHasSave[first + i];
+      std::snprintf(nameBuf, sizeof(nameBuf), "%s%s", hasSave ? "> " : "", levelFiles[first + i].c_str());
+      renderer.drawText(UI_12_FONT_ID, 20, y, nameBuf, !sel);
     }
   }
   if (levelError[0] != '\0') {

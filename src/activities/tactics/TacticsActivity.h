@@ -98,5 +98,13 @@ class TacticsActivity final : public Activity {
   void drawUnitTile(int px, int py, const Tactics::Unit& u) const;
   void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
-  void deleteSave();  // battle save management (see save/resume section)
+
+  // Battle save/resume (versioned blob in /.crosspoint/tactics/)
+  std::string currentLevelFile;  // set by loadLevel
+  uint32_t levelCrc = 0;
+  std::vector<bool> levelHasSave;  // parallel to levelFiles
+  void savePath(char* out, size_t outLen) const;
+  bool saveBattle();
+  bool tryResumeBattle();  // true if a valid save was imported
+  void deleteSave();
 };
