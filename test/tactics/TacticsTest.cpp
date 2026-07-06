@@ -188,7 +188,7 @@ TEST(Movement, ZocStopsMovement) {
   Game game;
   game.start(level);
   game.computeReach(0);
-  // Knight (move 7) walks into the tile next to the orc but not past it.
+  // Knight (move 5) walks into the tile next to the orc but not past it.
   EXPECT_TRUE(game.isReachable(3, 0));
   EXPECT_FALSE(game.isReachable(5, 0));  // behind the orc, blocked by ZOC + body
 }
@@ -296,10 +296,10 @@ TEST(Fog, HidesUnexploredAndRemembersExplored) {
   EXPECT_FALSE(game.isVisible(19, 1));  // base hidden at the far end
   EXPECT_FALSE(game.isExplored(19, 1));
   // March toward the base; explored area persists behind us.
-  ASSERT_TRUE(game.moveUnit(0, 7, 0));
-  EXPECT_TRUE(game.isExplored(0, 0));  // remembered
-  EXPECT_TRUE(game.isVisible(11, 0));  // new frontier
-  EXPECT_FALSE(game.isVisible(0, 0));  // out of live sight now (vision 4)
+  ASSERT_TRUE(game.moveUnit(0, 5, 0));  // knight move 5
+  EXPECT_TRUE(game.isExplored(0, 0));   // remembered
+  EXPECT_TRUE(game.isVisible(9, 0));    // new frontier (vision 4 from x=5)
+  EXPECT_FALSE(game.isVisible(0, 0));   // out of live sight now (vision 4)
 }
 
 TEST(Fog, CaptureBaseWins) {
@@ -528,4 +528,25 @@ TEST(SaveState, RejectsGarbage) {
   std::memset(blob, 0xAB, sizeof(blob));
   Game g;
   EXPECT_FALSE(g.importState(blob));
+}
+
+// ---------------------------------------------------------------- balance
+
+TEST(Balance, KnightIsSlowedToFive) {
+  const int idx = unitTypeFromId("human_knight");
+  ASSERT_GE(idx, 0);
+  EXPECT_EQ(UNIT_TYPES[idx].move, 5);
+}
+
+TEST(Balance, GoblinSlingerExists) {
+  const int idx = unitTypeFromId("goblin_slinger");
+  ASSERT_GE(idx, 0);
+  const UnitType& t = UNIT_TYPES[idx];
+  EXPECT_EQ(t.maxHp, 16);
+  EXPECT_EQ(t.move, 5);
+  EXPECT_EQ(t.attack, 6);
+  EXPECT_EQ(t.range, 2);
+  EXPECT_EQ(t.defense, 0);
+  EXPECT_EQ(t.race, Race::Monster);
+  EXPECT_FALSE(t.flies);
 }

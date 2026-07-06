@@ -76,7 +76,7 @@ constexpr UnitType UNIT_TYPES[] = {
     // id                glyph  race              hp  mv atk rng def vis rgn fly
     {"human_soldier", {'H', 'S', 0}, Race::Human, 30, 5, 8, 1, 10, 4, 0, false},
     {"human_archer", {'H', 'A', 0}, Race::Human, 24, 5, 7, 2, 5, 5, 0, false},
-    {"human_knight", {'H', 'K', 0}, Race::Human, 38, 7, 10, 1, 15, 4, 0, false},
+    {"human_knight", {'H', 'K', 0}, Race::Human, 38, 5, 10, 1, 15, 4, 0, false},
     {"elf_fighter", {'E', 'F', 0}, Race::Elf, 28, 6, 8, 1, 10, 4, 0, false},
     {"elf_archer", {'E', 'A', 0}, Race::Elf, 22, 6, 9, 2, 5, 5, 0, false},
     {"elf_mage", {'E', 'M', 0}, Race::Elf, 20, 5, 11, 2, 0, 4, 0, false},
@@ -90,6 +90,7 @@ constexpr UnitType UNIT_TYPES[] = {
     {"orc", {'o', 'c', 0}, Race::Monster, 30, 5, 9, 1, 10, 4, 0, false},
     {"troll", {'t', 'r', 0}, Race::Monster, 44, 4, 10, 1, 10, 4, 4, false},
     {"wyvern", {'w', 'y', 0}, Race::Monster, 30, 7, 10, 1, 5, 6, 0, true},
+    {"goblin_slinger", {'g', 's', 0}, Race::Monster, 16, 5, 6, 2, 0, 4, 0, false},
 };
 constexpr int UNIT_TYPE_COUNT = static_cast<int>(sizeof(UNIT_TYPES) / sizeof(UNIT_TYPES[0]));
 
