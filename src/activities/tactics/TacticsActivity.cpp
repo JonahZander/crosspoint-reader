@@ -639,14 +639,44 @@ void TacticsActivity::renderHud() {
                   I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
                   game->unit(targets[targetSel]).hp, f.damageToTarget, f.counterDamage);
     const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
-    renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 30, line, true);
+    renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 10, line, true);
   } else {
+    // Line 1: unit under cursor — name, HP, compact stat line.
     const int ui = game->unitIndexAt(cursorX, cursorY);
     if (ui >= 0 && game->isVisible(cursorX, cursorY)) {
       const Unit& u = game->unit(ui);
-      std::snprintf(line, sizeof(line), "%s %d/%d", I18N.get(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp);
+      char stats[48];
+      std::snprintf(stats, sizeof(stats), tr(STR_TACTICS_STATLINE), u.info().attack, u.info().range,
+                    game->defenseAt(u, u.x, u.y), u.info().move);
+      std::snprintf(line, sizeof(line), "%s %d/%d  %s", I18N.get(UNIT_NAME_IDS[u.type]), u.hp, u.info().maxHp,
+                    stats);
       const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
-      renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 30, line, true);
+      renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 10, line, true);
+    }
+    // Line 2: terrain under cursor (explored tiles only).
+    if (game->isExplored(cursorX, cursorY)) {
+      const Terrain t = level->at(cursorX, cursorY);
+      const auto& ti = Tactics::TERRAIN_INFO[static_cast<int>(t)];
+      char defBuf[20] = {0};
+      char movBuf[20] = {0};
+      char healBuf[20] = {0};
+      if (ti.defense > 0) std::snprintf(defBuf, sizeof(defBuf), tr(STR_TACTICS_TERRAIN_DEF), (int)ti.defense);
+      if (ti.moveCost > 0) std::snprintf(movBuf, sizeof(movBuf), tr(STR_TACTICS_TERRAIN_MOVE), (int)ti.moveCost);
+      if (ti.heal > 0) std::snprintf(healBuf, sizeof(healBuf), tr(STR_TACTICS_TERRAIN_HEAL), (int)ti.heal);
+      // Racial bonus hint when the unit standing here benefits.
+      const char* racial = "";
+      if (ui >= 0 && game->isVisible(cursorX, cursorY)) {
+        const Unit& u = game->unit(ui);
+        if (!u.info().flies &&
+            ((t == Terrain::Forest && u.info().race == Tactics::Race::Elf) ||
+             (t == Terrain::Mountain && u.info().race == Tactics::Race::Dwarf))) {
+          racial = tr(STR_TACTICS_RACIAL_BONUS);
+        }
+      }
+      std::snprintf(line, sizeof(line), "%s  %s %s %s %s", I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]),
+                    defBuf, movBuf, healBuf, racial);
+      const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
+      renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 50, line, true);
     }
   }
 
