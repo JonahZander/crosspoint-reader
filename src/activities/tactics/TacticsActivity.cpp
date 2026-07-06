@@ -788,6 +788,10 @@ void TacticsActivity::renderBoard() {
       if (mode == Mode::MoveSelect && game->isReachable(mx, my)) {
         renderer.fillRect(px + (TILE - 7) / 2, py + (TILE - 7) / 2, 7, 7, true);
       }
+      // Danger overlay: dithered strip along the tile bottom.
+      if (dangerOverlay && vis && game->isDangerous(mx, my)) {
+        renderer.fillRectDither(px + 2, py + TILE - 8, TILE - 4, 6, Color::DarkGray);
+      }
     }
   }
   // Cursor / target highlight
