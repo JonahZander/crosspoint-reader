@@ -32,6 +32,7 @@ void Game::start(const Level& level) {
   reachUnit_ = -1;
   approachValid_ = false;
   std::memset(explored_, 0, sizeof(explored_));
+  std::memset(danger_, 0, sizeof(danger_));
   recomputeFog();
 }
 
@@ -52,6 +53,52 @@ bool Game::isExplored(const int x, const int y) const {
   if (x < 0 || y < 0 || x >= level_.width || y >= level_.height) return false;
   const int idx = tileIndex(x, y);
   return (explored_[idx / 8] >> (idx % 8)) & 1;
+}
+
+void Game::computeDangerZones() {
+  std::memset(danger_, 0, sizeof(danger_));
+  for (int i = 0; i < unitCount_; i++) {
+    const Unit& e = units_[i];
+    if (!e.alive || e.side != Side::Enemy) continue;
+    if (!isVisible(e.x, e.y)) continue;  // player can't know hidden threats
+    // Awake = already aggro'd, or the aggro radius would wake it now.
+    bool awake = e.aggro;
+    for (int p = 0; p < unitCount_ && !awake; p++) {
+      const Unit& pl = units_[p];
+      if (pl.alive && pl.side == Side::Player && manhattan(e.x, e.y, pl.x, pl.y) <= level_.aggroRadius) {
+        awake = true;
+      }
+    }
+    if (!awake) continue;
+    computeReach(i);
+    const int range = e.info().range;
+    for (int y = 0; y < level_.height; y++) {
+      for (int x = 0; x < level_.width; x++) {
+        const bool standable =
+            (x == e.x && y == e.y) || (reach_[tileIndex(x, y)] != UNREACHABLE && isReachable(x, y));
+        if (!standable) continue;
+        for (int dy = -range; dy <= range; dy++) {
+          for (int dx = -range; dx <= range; dx++) {
+            const int adx = dx < 0 ? -dx : dx;
+            const int ady = dy < 0 ? -dy : dy;
+            if (adx + ady < 1 || adx + ady > range) continue;
+            const int tx = x + dx;
+            const int ty = y + dy;
+            if (tx < 0 || ty < 0 || tx >= level_.width || ty >= level_.height) continue;
+            const int idx = tileIndex(tx, ty);
+            danger_[idx / 8] = static_cast<uint8_t>(danger_[idx / 8] | (1 << (idx % 8)));
+          }
+        }
+      }
+    }
+  }
+  reachUnit_ = -1;  // reach cache now belongs to the last enemy scanned
+}
+
+bool Game::isDangerous(const int x, const int y) const {
+  if (x < 0 || y < 0 || x >= level_.width || y >= level_.height) return false;
+  const int idx = tileIndex(x, y);
+  return (danger_[idx / 8] >> (idx % 8)) & 1;
 }
 
 int Game::moveCostFor(const Unit& u, const int x, const int y) const {

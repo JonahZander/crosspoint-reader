@@ -467,3 +467,35 @@ TEST(Undo, VisionRecedesButExploredStays) {
   EXPECT_FALSE(game.isVisible(7, 0));  // vision recedes
   EXPECT_TRUE(game.isExplored(7, 0));  // explored layer is permanent
 }
+
+// ---------------------------------------------------------------- danger
+
+TEST(DangerZones, HiddenEnemyContributesNothing) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  // Goblin at (8,0) is outside soldier/archer vision at start.
+  ASSERT_FALSE(game.isVisible(8, 0));
+  game.computeDangerZones();
+  for (int y = 0; y < level.height; y++)
+    for (int x = 0; x < level.width; x++) EXPECT_FALSE(game.isDangerous(x, y));
+}
+
+TEST(DangerZones, VisibleAwakeEnemyMarksItsThreatRange) {
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));  // aggro 30: enemies wake immediately
+  Game game;
+  game.start(level);
+  game.computeReach(0);
+  ASSERT_TRUE(game.moveUnit(0, 4, 0));  // goblin at (8,0) now visible
+  ASSERT_TRUE(game.isVisible(8, 0));
+  // ARENA aggro radius is 30, so the goblin counts as awake even though it
+  // has not acted yet — danger zones must treat radius-woken enemies as live
+  // threats.
+  game.computeDangerZones();
+  // Goblin: move 5, range 1. (4,1) is well within move+range.
+  EXPECT_TRUE(game.isDangerous(4, 1));
+  // A tile far beyond move+range stays safe: (0,4).
+  EXPECT_FALSE(game.isDangerous(0, 4));
+}

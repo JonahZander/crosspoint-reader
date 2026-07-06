@@ -52,6 +52,12 @@ class Game {
   bool isVisible(int x, int y) const;
   bool isExplored(int x, int y) const;
 
+  // Danger overlay: tiles attackable next turn by enemies that are visible
+  // to the player and awake (aggro'd or within the level's aggro radius).
+  // Invalidates the computeReach() cache.
+  void computeDangerZones();
+  bool isDangerous(int x, int y) const;
+
   // Movement. computeReach() fills the reachability field used by both
   // isReachable() and the movement-range overlay in the UI.
   void computeReach(int unitIdx);
@@ -117,6 +123,7 @@ class Game {
   bool approachForFlyer_ = false;
   uint8_t visible_[MAX_TILES / 8];
   uint8_t explored_[MAX_TILES / 8];
+  uint8_t danger_[MAX_TILES / 8];
 };
 
 }  // namespace Tactics
