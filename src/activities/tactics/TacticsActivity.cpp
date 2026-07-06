@@ -35,7 +35,14 @@ constexpr StrId UNIT_NAME_IDS[Tactics::UNIT_TYPE_COUNT] = {
     StrId::STR_UNIT_DWARF_WARRIOR, StrId::STR_UNIT_DWARF_THUNDERER, StrId::STR_UNIT_DWARF_GUARD,
     StrId::STR_UNIT_DRAKE_CLASHER, StrId::STR_UNIT_DRAKE_FLARE,   StrId::STR_UNIT_DRAKE_FLYER,
     StrId::STR_UNIT_GOBLIN,        StrId::STR_UNIT_ORC,           StrId::STR_UNIT_TROLL,
-    StrId::STR_UNIT_WYVERN,
+    StrId::STR_UNIT_WYVERN,        StrId::STR_UNIT_GOBLIN_SLINGER,
+};
+
+// Display names for terrain, indexed like Tactics::TERRAIN_INFO.
+constexpr StrId TERRAIN_NAME_IDS[Tactics::TERRAIN_COUNT] = {
+    StrId::STR_TERRAIN_VOID,     StrId::STR_TERRAIN_PLAIN, StrId::STR_TERRAIN_FOREST,
+    StrId::STR_TERRAIN_MOUNTAIN, StrId::STR_TERRAIN_WATER, StrId::STR_TERRAIN_ROCK,
+    StrId::STR_TERRAIN_CASTLE,   StrId::STR_TERRAIN_ENEMY_BASE,
 };
 
 }  // namespace
@@ -450,9 +457,9 @@ void TacticsActivity::render(RenderLock&&) {
 void TacticsActivity::renderLevelSelect() {
   const int pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, 60}, tr(STR_TACTICS));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS));
 
-  const int top = metrics.topPadding + 70;
+  const int top = metrics.topPadding + metrics.headerHeight + 10;
   const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 14;
   if (levelFiles.empty()) {
     renderer.drawText(UI_12_FONT_ID, 20, top, tr(STR_TACTICS_NO_LEVELS), true);
@@ -570,7 +577,7 @@ void TacticsActivity::renderBoard() {
       }
       // Movement overlay for the selected unit.
       if (mode == Mode::MoveSelect && game->isReachable(mx, my)) {
-        renderer.fillRect(px + 2, py + 2, 7, 7, true);
+        renderer.fillRect(px + (TILE - 7) / 2, py + (TILE - 7) / 2, 7, 7, true);
       }
     }
   }
