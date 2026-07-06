@@ -228,7 +228,8 @@ void TacticsActivity::loop() {
       loopPauseMenu();
       break;
     case Mode::Inspect:
-      break;  // wired up with the inspect panel below
+      loopInspect();
+      break;
     case Mode::EnemyTurn:
       loopEnemyTurn();
       break;
@@ -549,6 +550,15 @@ void TacticsActivity::loopEnemyTurn() {
   }
 }
 
+void TacticsActivity::loopInspect() {
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    mode = Mode::Cursor;
+    nextRefreshFull = true;  // wipe the full-screen overlay cleanly
+    requestUpdate();
+  }
+}
+
 void TacticsActivity::loopGameOver() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm) ||
       mappedInput.wasReleased(MappedInputManager::Button::Back)) {
@@ -563,6 +573,8 @@ void TacticsActivity::render(RenderLock&&) {
   renderer.clearScreen();
   if (mode == Mode::LevelSelect) {
     renderLevelSelect();
+  } else if (mode == Mode::Inspect) {
+    renderInspect();
   } else {
     renderBoard();
     renderHud();
@@ -596,6 +608,86 @@ void TacticsActivity::renderLevelSelect() {
     renderer.drawText(SMALL_FONT_ID, 20, renderer.getScreenHeight() - 100, levelError, true);
   }
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), tr(STR_DIR_UP), tr(STR_DIR_DOWN));
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
+void TacticsActivity::renderInspect() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS_INSPECT));
+  int y = metrics.topPadding + metrics.headerHeight + 16;
+  const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 10;
+  char line[96];
+
+  const Terrain t = level->at(cursorX, cursorY);
+  const auto& ti = Tactics::TERRAIN_INFO[static_cast<int>(t)];
+
+  if (inspectUnit >= 0) {
+    const Unit& u = game->unit(inspectUnit);
+    const auto& info = u.info();
+    // Sprite at 3x next to the name.
+    const int sx = 24;
+    for (int sy = 0; sy < Tactics::SPRITE_SIZE; sy++) {
+      for (int sxp = 0; sxp < Tactics::SPRITE_SIZE; sxp++) {
+        if (Tactics::spritePixel(u.type, sxp, sy)) {
+          renderer.fillRect(sx + sxp * 3, y + sy * 3, 3, 3, true);
+        }
+      }
+    }
+    renderer.drawText(UI_12_FONT_ID, sx + Tactics::SPRITE_SIZE * 3 + 16, y + 8,
+                      I18N.get(UNIT_NAME_IDS[u.type]), true, EpdFontFamily::BOLD);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_HP), u.hp, info.maxHp);
+    renderer.drawText(UI_12_FONT_ID, sx + Tactics::SPRITE_SIZE * 3 + 16, y + 8 + lineH, line, true);
+    y += Tactics::SPRITE_SIZE * 3 + 24;
+
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STATLINE), info.attack, info.range, (int)info.defense,
+                  info.move);
+    renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
+    y += lineH;
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_VISION), info.vision);
+    renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
+    y += lineH;
+    if (info.regen > 0) {
+      std::snprintf(line, sizeof(line), tr(STR_TACTICS_REGEN), info.regen);
+      renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
+      y += lineH;
+    }
+    if (info.flies) {
+      renderer.drawText(UI_12_FONT_ID, 24, y, tr(STR_TACTICS_FLIES), true);
+      y += lineH;
+    }
+    // Defense breakdown on the tile it stands on.
+    int terrainDef = 0;
+    int racialDef = 0;
+    if (!info.flies) {
+      terrainDef = ti.defense;
+      if (t == Terrain::Forest && info.race == Tactics::Race::Elf) racialDef = 15;
+      if (t == Terrain::Mountain && info.race == Tactics::Race::Dwarf) racialDef = 15;
+    }
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_DEF_BREAKDOWN), game->defenseAt(u, u.x, u.y),
+                  (int)info.defense, terrainDef, racialDef);
+    renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
+    y += lineH;
+  }
+
+  // Terrain block (always shown).
+  y += 8;
+  renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true,
+                    EpdFontFamily::BOLD);
+  y += lineH;
+  char defBuf[24] = {0};
+  char movBuf[24] = {0};
+  char healBuf[24] = {0};
+  if (ti.defense > 0) std::snprintf(defBuf, sizeof(defBuf), tr(STR_TACTICS_TERRAIN_DEF), (int)ti.defense);
+  if (ti.moveCost > 0) std::snprintf(movBuf, sizeof(movBuf), tr(STR_TACTICS_TERRAIN_MOVE), (int)ti.moveCost);
+  if (ti.heal > 0) std::snprintf(healBuf, sizeof(healBuf), tr(STR_TACTICS_TERRAIN_HEAL), (int)ti.heal);
+  std::snprintf(line, sizeof(line), "%s %s %s", defBuf, movBuf, healBuf);
+  renderer.drawText(UI_12_FONT_ID, 24, y, line, true);
+  y += lineH + 8;
+
+  renderer.drawText(SMALL_FONT_ID, 24, y, tr(STR_TACTICS_DMG_RULE), true);
+
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
