@@ -1,0 +1,29 @@
+# The Broken Crown, battle 3 — hold Harrowfield Manor.
+# Survival mission: a walled courtyard with a single south gate. Only one
+# attacker at a time can reach the gate-holder in melee; the archer on the
+# hall (castle heals 4/turn) shoots over the walls. Lady Harrow's manor
+# guard stands with the Watch. Both attack groups charge at once
+# (aggro 30) but arrive from opposite roads.
+name: Crown - The Burned Manor
+win: survive
+turns: 10
+aggro: 30
+map: |
+  ..............
+  ....####......
+  ....#C.#..f...
+  ....#..#......
+  ....##.#......
+  ..............
+  .f............
+  ..............
+units:
+  - {type: human_knight, at: [6, 4], side: player}
+  - {type: human_archer, at: [5, 2], side: player}
+  - {type: human_soldier, at: [6, 2], side: player}
+  - {type: human_soldier, at: [6, 3], side: player}
+  - {type: human_soldier, at: [12, 1], side: enemy}
+  - {type: human_archer, at: [13, 4], side: enemy}
+  - {type: goblin, at: [12, 7], side: enemy}
+  - {type: goblin, at: [0, 6], side: enemy}
+  - {type: human_soldier, at: [0, 1], side: enemy}

@@ -56,21 +56,27 @@ bool Game::isExplored(const int x, const int y) const {
   return (explored_[idx / 8] >> (idx % 8)) & 1;
 }
 
-void Game::computeDangerZones() {
+void Game::computeDangerZones(const int onlyUnit) {
   std::memset(danger_, 0, sizeof(danger_));
   for (int i = 0; i < unitCount_; i++) {
     const Unit& e = units_[i];
     if (!e.alive || e.side != Side::Enemy) continue;
-    if (!isVisible(e.x, e.y)) continue;  // player can't know hidden threats
-    // Awake = already aggro'd, or the aggro radius would wake it now.
-    bool awake = e.aggro;
-    for (int p = 0; p < unitCount_ && !awake; p++) {
-      const Unit& pl = units_[p];
-      if (pl.alive && pl.side == Side::Player && manhattan(e.x, e.y, pl.x, pl.y) <= level_.aggroRadius) {
-        awake = true;
+    if (onlyUnit >= 0) {
+      // Hover mode: exactly this enemy, even if dormant — the player is
+      // asking "what could this one do if it woke up".
+      if (i != onlyUnit) continue;
+    } else {
+      if (!isVisible(e.x, e.y)) continue;  // player can't know hidden threats
+      // Awake = already aggro'd, or the aggro radius would wake it now.
+      bool awake = e.aggro;
+      for (int p = 0; p < unitCount_ && !awake; p++) {
+        const Unit& pl = units_[p];
+        if (pl.alive && pl.side == Side::Player && manhattan(e.x, e.y, pl.x, pl.y) <= level_.aggroRadius) {
+          awake = true;
+        }
       }
+      if (!awake) continue;
     }
-    if (!awake) continue;
     computeReach(i);
     const int range = e.info().range;
     for (int y = 0; y < level_.height; y++) {
@@ -177,6 +183,30 @@ bool Game::moveUnit(const int unitIdx, const int x, const int y) {
   if (!u.alive || u.acted || status_ != Status::Playing) return false;
   if (reachUnit_ != unitIdx) computeReach(unitIdx);
   if (!isReachable(x, y)) return false;
+  // Parting blows: disengaging from an adjacent foe lets it strike once
+  // for half damage (defense of the tile being left; no flank bonus).
+  // Flyers disengage freely — ZoC never bound them in the first place —
+  // and dormant monsters sleep through it.
+  if (!u.info().flies && (x != u.x || y != u.y)) {
+    for (int i = 0; i < unitCount_ && u.alive; i++) {
+      const Unit& e = units_[i];
+      if (!e.alive || e.side == u.side) continue;
+      // Awake matches the danger-overlay definition: aggro'd, or woken by
+      // the level's radius (an adjacent unit is within any radius >= 1).
+      if (e.side == Side::Enemy && !e.aggro && level_.aggroRadius < 1) continue;
+      if (manhattan(e.x, e.y, u.x, u.y) != 1) continue;  // engaged now
+      if (manhattan(e.x, e.y, x, y) <= 1) continue;      // still engaged after
+      const int def = defenseAt(u, u.x, u.y);
+      const int hit = e.info().attack * (100 - def) / 200;
+      u.hp = static_cast<int8_t>(u.hp - (hit < 1 ? 1 : hit));
+      if (u.hp <= 0) u.alive = false;
+    }
+    if (!u.alive) {  // cut down mid-retreat; the move never completes
+      recomputeFog();
+      checkVictory();
+      return true;
+    }
+  }
   u.x = static_cast<int8_t>(x);
   u.y = static_cast<int8_t>(y);
   if (u.side == Side::Player) {
@@ -227,9 +257,16 @@ int Game::defenseAt(const Unit& u, const int x, const int y) const {
   return def > MAX_DEFENSE ? MAX_DEFENSE : def;
 }
 
+bool Game::flanks(const Unit& attacker, const Unit& defender) const {
+  if (manhattan(attacker.x, attacker.y, defender.x, defender.y) != 1) return false;
+  const int occ = unitIndexAt(2 * defender.x - attacker.x, 2 * defender.y - attacker.y);
+  return occ >= 0 && units_[occ].side == attacker.side;
+}
+
 int Game::damage(const Unit& attacker, const Unit& defender) const {
   const int def = defenseAt(defender, defender.x, defender.y);
-  const int dmg = attacker.info().attack * (100 - def) / 100;
+  int dmg = attacker.info().attack * (100 - def) / 100;
+  if (flanks(attacker, defender)) dmg = dmg * 3 / 2;  // pincer bonus
   return dmg < 1 ? 1 : dmg;
 }
 
@@ -238,6 +275,7 @@ Game::Forecast Game::forecast(const int attackerIdx, const int targetIdx) const 
   const Unit& t = units_[targetIdx];
   Forecast f{};
   f.damageToTarget = static_cast<int8_t>(damage(a, t));
+  f.flank = flanks(a, t);
   f.targetDies = f.damageToTarget >= t.hp;
   // The defender strikes back only if it survives and the attacker is
   // within its own reach — so archers poking melee from afar are safe.

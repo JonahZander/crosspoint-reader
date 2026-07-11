@@ -1,0 +1,31 @@
+# The Broken Crown, finale — the throne hall of Castle Corven.
+# Capture mission: the throne (B) ends the war the instant anyone lawful
+# stands on it — the Duke and his sworn knights do not need to die. Stone
+# walls force the approach through two doorways; the garrison holds its
+# posts (aggro 4) and every doorway is a zone-of-control toll.
+name: Crown - The Throne Hall
+win: capture_base
+turns: 25
+aggro: 4
+map: |
+  ................
+  .####.####.###..
+  .#..........C#..
+  .#...........#..
+  ..............B.
+  .#...........#..
+  .#............#.
+  .####.####.####.
+  ................
+units:
+  - {type: human_knight, at: [0, 3], side: player}
+  - {type: human_knight, at: [0, 5], side: player}
+  - {type: human_soldier, at: [1, 0], side: player}
+  - {type: human_soldier, at: [1, 8], side: player}
+  - {type: human_archer, at: [0, 4], side: player}
+  - {type: human_soldier, at: [5, 2], side: enemy}
+  - {type: human_soldier, at: [5, 6], side: enemy}
+  - {type: human_archer, at: [9, 4], side: enemy}
+  - {type: goblin_slinger, at: [11, 2], side: enemy}
+  - {type: human_knight, at: [13, 4], side: enemy}
+  - {type: human_soldier, at: [12, 5], side: enemy}

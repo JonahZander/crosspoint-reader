@@ -8,4 +8,6 @@ It waits now in the Maw — the great broken crater where the Deep Road once met
 
 Thorin checked his axe edge with his thumb and said nothing, which from Thorin is a speech.
 
-We end this where our grandmothers ended it. At the Maw. With ENOUGH carved fresh in whatever stone survives.
+A warden's charge is to keep the chronicle. But a chronicle of three dwarves dying alone at the bottom of the world is not one I intend to write. I have set down my pen, taken my mother's axe from the shrine wall, and told Vala to stop grinning about it.
+
+Four of us go to the Maw, then. We end this where our grandmothers ended it. With ENOUGH carved fresh in whatever stone survives.

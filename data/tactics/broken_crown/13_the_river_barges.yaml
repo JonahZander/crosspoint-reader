@@ -1,0 +1,27 @@
+# The Broken Crown, battle 2 — seize the Greywater barge docks.
+# Capture mission: the dock (B) wins the moment anyone stands on it, even
+# with the garrison alive. Two fords cross the river; archers watch both
+# (aggro 4 — they hold their posts until you commit to a crossing).
+name: Crown - The River Barges
+win: capture_base
+turns: 20
+aggro: 4
+map: |
+  ......~~......
+  ......~~......
+  ..............
+  ......~~......
+  .ff...~~...f..
+  ......~~....B.
+  ..............
+  ......~~..f...
+  ......~~......
+units:
+  - {type: human_knight, at: [2, 2], side: player}
+  - {type: human_soldier, at: [1, 4], side: player}
+  - {type: human_soldier, at: [2, 6], side: player}
+  - {type: human_archer, at: [1, 2], side: player}
+  - {type: human_archer, at: [9, 2], side: enemy}
+  - {type: human_archer, at: [9, 6], side: enemy}
+  - {type: human_soldier, at: [11, 3], side: enemy}
+  - {type: human_knight, at: [11, 5], side: enemy}

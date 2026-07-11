@@ -23,6 +23,7 @@ class Game {
     int8_t counterDamage;  // 0 when the target cannot strike back
     bool targetDies;
     bool attackerDies;
+    bool flank;  // an ally stands directly behind the target: +50% damage
   };
 
   // One enemy unit's completed action, for UI/log purposes.
@@ -56,8 +57,10 @@ class Game {
 
   // Danger overlay: tiles attackable next turn by enemies that are visible
   // to the player and awake (aggro'd or within the level's aggro radius).
+  // With onlyUnit >= 0 the mask holds just that enemy's threat, skipping
+  // the visibility/awake filters (used when the cursor hovers an enemy).
   // Invalidates the computeReach() cache.
-  void computeDangerZones();
+  void computeDangerZones(int onlyUnit = -1);
   bool isDangerous(int x, int y) const;
 
   // Movement. computeReach() fills the reachability field used by both
@@ -106,6 +109,9 @@ class Game {
 
   int moveCostFor(const Unit& u, int x, int y) const;  // 0 = impassable
   bool inEnemyZoc(const Unit& u, int x, int y) const;
+  // Flank: melee strike with an allied unit on the tile directly opposite
+  // the attacker. Works for both sides and for counterattacks.
+  bool flanks(const Unit& attacker, const Unit& defender) const;
   int damage(const Unit& attacker, const Unit& defender) const;
   void applyUpkeep(Side side);
   void recomputeFog();

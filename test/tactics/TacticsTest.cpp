@@ -536,6 +536,173 @@ TEST(SaveState, RejectsGarbage) {
 
 // ---------------------------------------------------------------- balance
 
+TEST(Combat, FlankBonusWithAllyBehindTarget) {
+  // Soldier (atk 8) hits a goblin (def 0) for 8 — or 12 when another
+  // player unit stands on the tile directly opposite the attacker.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  .....\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [1, 0], side: player}\n"
+      "  - {type: goblin, at: [2, 0], side: enemy}\n"
+      "  - {type: human_archer, at: [3, 0], side: player}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const Game::Forecast f = game.forecast(0, 1);
+  EXPECT_TRUE(f.flank);
+  EXPECT_EQ(f.damageToTarget, 12);  // 8 * 1.5
+}
+
+TEST(Combat, NoFlankFromTheSide) {
+  // Same pincer geometry but the ally is beside the goblin, not behind it.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  .....\n"
+      "  .....\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [1, 0], side: player}\n"
+      "  - {type: goblin, at: [2, 0], side: enemy}\n"
+      "  - {type: human_archer, at: [2, 1], side: player}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const Game::Forecast f = game.forecast(0, 1);
+  EXPECT_FALSE(f.flank);
+  EXPECT_EQ(f.damageToTarget, 8);
+}
+
+TEST(Combat, PartingBlowOnDisengage) {
+  // Soldier adjacent to an aggro'd orc (atk 9) walks away: half damage
+  // through plain-tile defense (10%) = 9*90/200 = 4. Undoability is the
+  // caller's business; the engine just applies the hit.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ........\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [2, 0], side: player}\n"
+      "  - {type: orc, at: [3, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const int8_t hpBefore = game.unit(0).hp;
+  ASSERT_TRUE(game.moveUnit(0, 0, 0));  // breaks contact
+  EXPECT_EQ(hpBefore - game.unit(0).hp, 4);
+}
+
+TEST(Combat, NoPartingBlowWhenStayingEngaged) {
+  // Sliding to another tile still adjacent to the same orc is not a
+  // disengage.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  .....\n"
+      "  .....\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [2, 0], side: player}\n"
+      "  - {type: orc, at: [3, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const int8_t hpBefore = game.unit(0).hp;
+  ASSERT_TRUE(game.moveUnit(0, 3, 1));  // still adjacent to the orc
+  EXPECT_EQ(game.unit(0).hp, hpBefore);
+}
+
+TEST(Combat, NoPartingBlowFromFullyDormantGuard) {
+  // aggro 0 = passive-until-attacked guards; walking out of contact with
+  // one costs nothing.
+  Level level;
+  const char* text =
+      "aggro: 0\n"
+      "map: |\n"
+      "  .....\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [2, 0], side: player}\n"
+      "  - {type: orc, at: [3, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const int8_t hpBefore = game.unit(0).hp;
+  ASSERT_TRUE(game.moveUnit(0, 0, 0));  // dormant guards sleep through it
+  EXPECT_EQ(game.unit(0).hp, hpBefore);
+}
+
+TEST(DangerZones, ThreatCoversMovePlusAttackRange) {
+  // Goblin at (8,0): move 5, range 1. Player ZoC at (1,0) is irrelevant to
+  // its path, so it can stand on x=3..8 and strike x=2. The danger mask
+  // must therefore extend exactly one tile past the walk area.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ............\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [0, 0], side: player}\n"
+      "  - {type: goblin, at: [8, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  game.computeDangerZones(1);  // hover variant: ignores fog and aggro state
+  game.computeReach(1);
+  EXPECT_TRUE(game.isReachable(3, 0));   // walk edge
+  EXPECT_FALSE(game.isReachable(2, 0));  // beyond move budget
+  EXPECT_TRUE(game.isDangerous(2, 0));   // ...but attackable from (3,0)
+  EXPECT_FALSE(game.isDangerous(1, 0));  // beyond move + range
+}
+
+TEST(DangerZones, HoverVariantIsolatesOneEnemy) {
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ..........\n"
+      "  ..........\n"
+      "  ..........\n"
+      "  ..........\n"
+      "  ..........\n"
+      "  ..........\n"
+      "  ..........\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [0, 0], side: player}\n"
+      "  - {type: goblin, at: [4, 0], side: enemy}\n"
+      "  - {type: goblin, at: [9, 6], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  game.computeDangerZones(1);            // top goblin only
+  EXPECT_TRUE(game.isDangerous(4, 1));   // its threat
+  EXPECT_FALSE(game.isDangerous(9, 5));  // far goblin contributes nothing
+}
+
+TEST(Ai, AnyFactionCanBeTheEnemy) {
+  // Sides are free-form: a "good" race on side enemy is hunted by the AI
+  // exactly like a monster (campaigns can pit humans against evil humans).
+  Level level;
+  const char* text =
+      "aggro: 10\n"
+      "map: |\n"
+      "  ..........\n"
+      "units:\n"
+      "  - {type: orc, at: [0, 0], side: player}\n"
+      "  - {type: human_knight, at: [9, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  game.finishUnit(0);
+  game.endPlayerTurn();
+  const Game::AiAction act = game.aiStep();
+  EXPECT_TRUE(act.acted);
+  EXPECT_LT(act.toX, 9);  // the enemy knight hunts the player's orc
+}
+
 TEST(Balance, KnightIsSlowedToFive) {
   const int idx = unitTypeFromId("human_knight");
   ASSERT_GE(idx, 0);

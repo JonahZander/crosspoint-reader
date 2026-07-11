@@ -6,7 +6,7 @@ We built the new seal from the old one's rubble. Vala set the keystone. Thorin c
 
 Warden Dolgrim will limp for the rest of his days and refers to the limp as his trophy. The outer farms are already rebuilding; goblins burn faster than dwarves forget.
 
-On the muster roll of the Third Seal, I have written three names, and beside them the oldest words we have:
+On the muster roll of the Third Seal, I have written three names. Vala added a fourth in her own hand, which is against regulation, and I have decided the regulation is wrong. Beside them, the oldest words we have:
 
 DEBT PAID. DOOR HELD. ENOUGH.
 

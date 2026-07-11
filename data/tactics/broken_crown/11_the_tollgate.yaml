@@ -1,0 +1,22 @@
+# The Broken Crown, battle 1 — hold the Marrow tollgate.
+# A small, honest brawl to open the war: equal numbers, but the loyalists
+# bring Ser Aldric (knight) and the forest flanks the road. First lesson
+# of the civil war: these enemies flank exactly like you do.
+name: Crown - The Tollgate
+win: defeat_all
+aggro: 30
+map: |
+  ..ff......
+  ..f.......
+  ..........
+  .ff....ff.
+  ..........
+  .......f..
+  ......ff..
+units:
+  - {type: human_knight, at: [1, 3], side: player}
+  - {type: human_soldier, at: [1, 1], side: player}
+  - {type: human_archer, at: [0, 4], side: player}
+  - {type: human_soldier, at: [8, 2], side: enemy}
+  - {type: human_soldier, at: [8, 4], side: enemy}
+  - {type: human_soldier, at: [9, 3], side: enemy}

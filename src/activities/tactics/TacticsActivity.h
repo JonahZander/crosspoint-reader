@@ -34,6 +34,7 @@ class TacticsActivity final : public Activity {
     TargetSelect,  // unit has moved, choosing an attack target
     PauseMenu,     // full-screen menu: resume / undo / next / inspect / ...
     Inspect,       // full-screen unit + terrain panel
+    Rules,         // paged "how to play" reference
     EnemyTurn,
     GameOver,
   };
@@ -45,6 +46,7 @@ class TacticsActivity final : public Activity {
     UndoMove,
     NextUnit,
     Inspect,
+    HowToPlay,
     Danger,
     Refresh,
     EndTurn,
@@ -52,14 +54,20 @@ class TacticsActivity final : public Activity {
     Quit,
   };
 
-  // Level selection. The list holds both .yaml battles and .story text
-  // interludes, sorted by filename — that order *is* the campaign.
+  // Level selection. The list holds .yaml battles and .story interludes,
+  // sorted by filename — that order *is* the campaign. Subdirectories of
+  // /tactics are campaigns of their own: the root lists them as "name/"
+  // entries (folders first); entering one lists its files with the folder
+  // prefix kept in the entry ("deep_road/11_x.yaml"), so every downstream
+  // path (loading, saves, completion) keys off the same relative path.
   void scanLevels();
   bool loadLevel(const std::string& fileName);
-  bool openEntry(int index);                   // dispatches story vs battle
+  bool openEntry(int index);                   // dispatches folder/story/battle
   void advanceAfter(const std::string& file);  // campaign chain: open next entry
   static bool isStoryFile(const std::string& name);
+  static bool isDirEntry(const std::string& name) { return !name.empty() && name.back() == '/'; }
   std::vector<std::string> levelFiles;
+  std::string currentDir;  // "" = /tactics root
   int levelSelIndex = 0;
   char levelError[96] = {0};
 
@@ -98,7 +106,12 @@ class TacticsActivity final : public Activity {
   int undoUnit = -1;  // -1 = nothing to undo
   int8_t undoX = 0, undoY = 0;
   bool dangerOverlay = false;
+  // Cursor resting on a visible enemy shows that enemy's threat: dashed
+  // border on its walk area, danger markers on the attack fringe.
+  int hoverEnemy = -1;
+  void updateHoverThreat();
   int inspectUnit = -1;  // -1 = terrain-only inspect
+  int rulesPage = 0;
   unsigned long lastAiStepMs = 0;
   char statusLine[64] = {0};
   bool nextRefreshFull = false;
@@ -111,6 +124,7 @@ class TacticsActivity final : public Activity {
   void loopTargetSelect();
   void loopPauseMenu();
   void loopInspect();
+  void loopRules();
   void loopEnemyTurn();
   void loopGameOver();
   bool moveCursor();                                 // shared cursor movement, returns true if moved
@@ -132,9 +146,11 @@ class TacticsActivity final : public Activity {
   void renderHud();
   void renderPauseMenu();
   void renderInspect();
+  void renderRules();
   void drawTerrainTile(int px, int py, Tactics::Terrain t) const;
   void drawUnitTile(int px, int py, const Tactics::Unit& u) const;
-  void drawDangerSword(int px, int py) const;
+  void drawDangerShade(int px, int py) const;
+  void drawReachBorder(int px, int py, bool halo = false) const;
   void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
 
@@ -142,6 +158,7 @@ class TacticsActivity final : public Activity {
   std::string currentLevelFile;  // set by loadLevel
   uint32_t levelCrc = 0;
   std::vector<bool> levelHasSave;  // parallel to levelFiles
+  static void savFileName(const std::string& rel, char* out, size_t outLen);
   void savePath(char* out, size_t outLen) const;
   bool saveBattle();
   bool tryResumeBattle();  // true if a valid save was imported

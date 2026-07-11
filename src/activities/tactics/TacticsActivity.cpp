@@ -64,9 +64,17 @@ uint32_t fnv1a(const char* data, const size_t len) {
 
 // ------------------------------------------------------------ save/resume
 
-void TacticsActivity::savePath(char* out, const size_t outLen) const {
-  std::snprintf(out, outLen, "%s/%s.sav", SAVES_DIR, currentLevelFile.c_str());
+void TacticsActivity::savFileName(const std::string& rel, char* out, const size_t outLen) {
+  // Folder-qualified entries ("deep_road/11_x.yaml") stay flat files in
+  // SAVES_DIR: '/' becomes '~' so no nested save directories are needed.
+  char flat[96];
+  const size_t n = rel.size() < sizeof(flat) - 1 ? rel.size() : sizeof(flat) - 1;
+  for (size_t i = 0; i < n; i++) flat[i] = rel[i] == '/' ? '~' : rel[i];
+  flat[n] = '\0';
+  std::snprintf(out, outLen, "%s/%s.sav", SAVES_DIR, flat);
 }
+
+void TacticsActivity::savePath(char* out, const size_t outLen) const { savFileName(currentLevelFile, out, outLen); }
 
 bool TacticsActivity::saveBattle() {
   if (!game || game->status() != Game::Status::Playing || currentLevelFile.empty()) return false;
@@ -145,28 +153,43 @@ void TacticsActivity::onExit() {
 void TacticsActivity::scanLevels() {
   levelFiles.clear();
   levelFiles.reserve(8);
-  if (!Storage.exists(LEVELS_DIR)) return;
-  auto dir = Storage.open(LEVELS_DIR);
+  std::string dirPath = LEVELS_DIR;
+  if (!currentDir.empty()) dirPath += "/" + currentDir;
+  if (!Storage.exists(dirPath.c_str())) {
+    currentDir.clear();  // folder vanished (SD edited): fall back to root
+    dirPath = LEVELS_DIR;
+    if (!Storage.exists(dirPath.c_str())) return;
+  }
+  auto dir = Storage.open(dirPath.c_str());
   if (!dir) return;
   char name[64];
   for (auto file = dir.openNextFile(); file; file = dir.openNextFile()) {
-    if (file.isDirectory()) continue;
     file.getName(name, sizeof(name));
-    const size_t len = std::strlen(name);
     if (name[0] == '.') continue;
+    if (levelFiles.size() >= MAX_LEVEL_FILES) break;
+    if (file.isDirectory()) {
+      // Subfolders are campaigns; only the root lists them (one level deep).
+      if (currentDir.empty()) levelFiles.emplace_back(std::string(name) + "/");
+      continue;
+    }
+    const size_t len = std::strlen(name);
     const bool isLevel = len >= 6 && std::strcmp(name + len - 5, ".yaml") == 0;
     const bool isStory = len >= 7 && std::strcmp(name + len - 6, ".story") == 0;
     if (!isLevel && !isStory) continue;
-    if (levelFiles.size() >= MAX_LEVEL_FILES) break;
-    levelFiles.emplace_back(name);
+    levelFiles.emplace_back(currentDir.empty() ? std::string(name) : currentDir + "/" + name);
   }
-  std::sort(levelFiles.begin(), levelFiles.end());
+  // Folders first, then alphabetical — the campaign order.
+  std::sort(levelFiles.begin(), levelFiles.end(), [](const std::string& a, const std::string& b) {
+    if (isDirEntry(a) != isDirEntry(b)) return isDirEntry(a);
+    return a < b;
+  });
   if (levelSelIndex >= static_cast<int>(levelFiles.size())) levelSelIndex = 0;
   // Mark levels with a battle in progress.
   levelHasSave.assign(levelFiles.size(), false);
   for (size_t i = 0; i < levelFiles.size(); i++) {
+    if (isDirEntry(levelFiles[i])) continue;
     char path[128];
-    std::snprintf(path, sizeof(path), "%s/%s.sav", SAVES_DIR, levelFiles[i].c_str());
+    savFileName(levelFiles[i], path, sizeof(path));
     levelHasSave[i] = Storage.exists(path);
   }
   loadCompleted();
@@ -178,7 +201,13 @@ bool TacticsActivity::isStoryFile(const std::string& name) {
 
 bool TacticsActivity::openEntry(const int index) {
   if (index < 0 || index >= static_cast<int>(levelFiles.size())) return false;
-  const std::string& name = levelFiles[index];
+  const std::string name = levelFiles[index];  // copy: scanLevels below invalidates the ref
+  if (isDirEntry(name)) {
+    currentDir = name.substr(0, name.size() - 1);
+    levelSelIndex = 0;
+    scanLevels();
+    return true;  // stays in LevelSelect, now inside the campaign folder
+  }
   if (isStoryFile(name)) return loadStory(name);
   return loadLevel(name);
 }
@@ -437,6 +466,7 @@ bool TacticsActivity::loadLevel(const std::string& fileName) {
     }
   }
   selectedUnit = -1;
+  hoverEnemy = -1;
   centerCamera(cursorX, cursorY);
   std::snprintf(statusLine, sizeof(statusLine), "%s", level->name);
   mode = Mode::Cursor;
@@ -534,6 +564,9 @@ void TacticsActivity::loop() {
     case Mode::Inspect:
       loopInspect();
       break;
+    case Mode::Rules:
+      loopRules();
+      break;
     case Mode::EnemyTurn:
       loopEnemyTurn();
       break;
@@ -546,6 +579,13 @@ void TacticsActivity::loop() {
 void TacticsActivity::loopLevelSelect() {
   const int count = static_cast<int>(levelFiles.size());
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    if (!currentDir.empty()) {  // leave the campaign folder first
+      currentDir.clear();
+      levelSelIndex = 0;
+      scanLevels();
+      requestUpdate();
+      return;
+    }
     onGoHome();
     return;
   }
@@ -583,9 +623,31 @@ bool TacticsActivity::moveCursor() {
   return true;
 }
 
+void TacticsActivity::updateHoverThreat() {
+  int want = -1;
+  if (game->isVisible(cursorX, cursorY)) {
+    const int idx = game->unitIndexAt(cursorX, cursorY);
+    if (idx >= 0 && game->unit(idx).side == Side::Enemy) want = idx;
+  }
+  if (want == hoverEnemy) return;
+  hoverEnemy = want;
+  if (hoverEnemy >= 0) {
+    game->computeDangerZones(hoverEnemy);  // this enemy's threat only
+    game->computeReach(hoverEnemy);        // walk area (danger trashed the cache)
+  } else if (dangerOverlay) {
+    game->computeDangerZones();  // restore the all-enemies overlay
+  }
+  requestUpdate();
+}
+
 void TacticsActivity::loopCursor() {
-  if (moveCursor()) return;
+  const bool moved = moveCursor();
+  updateHoverThreat();
+  if (moved) return;
   if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    // Pause actions (undo, end turn, danger toggle, restart) invalidate the
+    // hover threat mask; drop it and recompute on resume if still hovering.
+    hoverEnemy = -1;
     pauseSel = 0;
     mode = Mode::PauseMenu;
     requestUpdate();
@@ -623,11 +685,23 @@ void TacticsActivity::loopMoveSelect() {
         const Unit& u = game->unit(i);
         if (u.alive && u.side == Side::Enemy) visBefore[i] = game->isVisible(u.x, u.y);
       }
+      const int8_t hpBefore = game->unit(selectedUnit).hp;
       game->moveUnit(selectedUnit, cursorX, cursorY);
       if (game->status() != Game::Status::Playing) {
         deleteSave();
-        mode = Mode::GameOver;  // stepped onto the enemy base
-        requestUpdate();
+        mode = Mode::GameOver;  // stepped onto the enemy base, or died to a
+        requestUpdate();        // parting blow as the last unit standing
+        return;
+      }
+      const Unit& moved = game->unit(selectedUnit);
+      const bool tookHit = moved.hp != hpBefore;
+      if (tookHit) {
+        std::snprintf(statusLine, sizeof(statusLine), "%s -%d", I18N.get(UNIT_NAME_IDS[moved.type]),
+                      hpBefore - moved.hp);
+      }
+      if (!moved.alive) {  // cut down while disengaging
+        undoUnit = -1;
+        finishSelectedUnit();
         return;
       }
       bool revealed = false;
@@ -635,7 +709,9 @@ void TacticsActivity::loopMoveSelect() {
         const Unit& u = game->unit(i);
         if (u.alive && u.side == Side::Enemy && !visBefore[i] && game->isVisible(u.x, u.y)) revealed = true;
       }
-      undoUnit = revealed ? -1 : selectedUnit;
+      // A parting blow (damage taken) or a fog reveal is bought
+      // information — either closes the undo window.
+      undoUnit = (revealed || tookHit) ? -1 : selectedUnit;
       undoX = fromX;
       undoY = fromY;
       // Moves auto-commit: straight to target selection when there is
@@ -741,6 +817,7 @@ int TacticsActivity::buildPauseActions(PauseAction* out) const {
   if (undoUnit >= 0) out[n++] = PauseAction::UndoMove;
   out[n++] = PauseAction::NextUnit;
   out[n++] = PauseAction::Inspect;
+  out[n++] = PauseAction::HowToPlay;
   out[n++] = PauseAction::Danger;
   out[n++] = PauseAction::Refresh;
   out[n++] = PauseAction::EndTurn;
@@ -750,7 +827,7 @@ int TacticsActivity::buildPauseActions(PauseAction* out) const {
 }
 
 void TacticsActivity::loopPauseMenu() {
-  PauseAction actions[9];
+  PauseAction actions[10];  // must cover every PauseAction
   const int optionCount = buildPauseActions(actions);
   if (pauseSel >= optionCount) pauseSel = optionCount - 1;
   if (mappedInput.wasPressed(MappedInputManager::Button::Up) ||
@@ -794,6 +871,10 @@ void TacticsActivity::loopPauseMenu() {
       case PauseAction::Inspect:
         inspectUnit = game->isVisible(cursorX, cursorY) ? game->unitIndexAt(cursorX, cursorY) : -1;
         mode = Mode::Inspect;
+        break;
+      case PauseAction::HowToPlay:
+        rulesPage = 0;
+        mode = Mode::Rules;
         break;
       case PauseAction::Danger:
         dangerOverlay = !dangerOverlay;
@@ -884,6 +965,85 @@ void TacticsActivity::loopEnemyTurn() {
   }
 }
 
+// "How to play" pages: a bold title plus one rule per line, all in flash.
+namespace {
+constexpr StrId RULES_COMBAT[] = {
+    StrId::STR_TACTICS_DMG_RULE,      StrId::STR_TACTICS_HELP_HIT,   StrId::STR_TACTICS_HELP_DEF,
+    StrId::STR_TACTICS_HELP_COUNTER,  StrId::STR_TACTICS_HELP_FLANK, StrId::STR_TACTICS_HELP_PARTING,
+    StrId::STR_TACTICS_HELP_PARTING2,
+};
+constexpr StrId RULES_MOVEMENT[] = {
+    StrId::STR_TACTICS_HELP_ZOC,    StrId::STR_TACTICS_HELP_FLYER, StrId::STR_TACTICS_HELP_FOG,
+    StrId::STR_TACTICS_HELP_VISION, StrId::STR_TACTICS_HELP_SLEEP, StrId::STR_TACTICS_HELP_SLEEP2,
+};
+constexpr StrId RULES_MARKERS[] = {
+    StrId::STR_TACTICS_HELP_REACH, StrId::STR_TACTICS_HELP_DANGER, StrId::STR_TACTICS_HELP_HOVER,
+    StrId::STR_TACTICS_HELP_UNDO,  StrId::STR_TACTICS_HELP_CASTLE,
+};
+struct RulesPageDef {
+  StrId title;
+  const StrId* lines;
+  int count;
+};
+constexpr RulesPageDef RULES_PAGES[] = {
+    {StrId::STR_TACTICS_HELP_COMBAT, RULES_COMBAT, static_cast<int>(sizeof(RULES_COMBAT) / sizeof(StrId))},
+    {StrId::STR_TACTICS_HELP_MOVEMENT, RULES_MOVEMENT, static_cast<int>(sizeof(RULES_MOVEMENT) / sizeof(StrId))},
+    {StrId::STR_TACTICS_HELP_MARKERS, RULES_MARKERS, static_cast<int>(sizeof(RULES_MARKERS) / sizeof(StrId))},
+};
+constexpr int RULES_PAGE_COUNT = static_cast<int>(sizeof(RULES_PAGES) / sizeof(RULES_PAGES[0]));
+}  // namespace
+
+void TacticsActivity::loopRules() {
+  if (mappedInput.wasPressed(MappedInputManager::Button::Left) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Up) ||
+      mappedInput.wasPressed(MappedInputManager::Button::PageBack)) {
+    if (rulesPage > 0) {
+      rulesPage--;
+      requestUpdate();
+    }
+    return;
+  }
+  if (mappedInput.wasPressed(MappedInputManager::Button::Right) ||
+      mappedInput.wasPressed(MappedInputManager::Button::Down) ||
+      mappedInput.wasPressed(MappedInputManager::Button::PageForward) ||
+      mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
+    if (rulesPage + 1 < RULES_PAGE_COUNT) {
+      rulesPage++;
+    } else {
+      mode = Mode::Cursor;  // Confirm past the last page closes
+    }
+    requestUpdate();
+    return;
+  }
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back)) {
+    mode = Mode::Cursor;
+    requestUpdate();
+  }
+}
+
+void TacticsActivity::renderRules() {
+  const auto& metrics = UITheme::getInstance().getMetrics();
+  const int pageWidth = renderer.getScreenWidth();
+  const int pageHeight = renderer.getScreenHeight();
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS_HELP));
+  const RulesPageDef& page = RULES_PAGES[rulesPage];
+  int y = metrics.topPadding + metrics.headerHeight + 12;
+  const int limit = pageHeight - 56;
+  const int lineH = renderer.getLineHeight(SMALL_FONT_ID) + 6;
+  renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(page.title), true, EpdFontFamily::BOLD);
+  y += renderer.getLineHeight(UI_12_FONT_ID) + 8;
+  for (int i = 0; i < page.count && y + lineH <= limit; i++) {
+    renderer.drawText(SMALL_FONT_ID, 32, y, I18N.get(page.lines[i]), true);
+    y += lineH;
+  }
+  char pageBuf[16];
+  std::snprintf(pageBuf, sizeof(pageBuf), tr(STR_TACTICS_PAGE), rulesPage + 1, RULES_PAGE_COUNT);
+  const int tw = renderer.getTextWidth(SMALL_FONT_ID, pageBuf);
+  renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, metrics.topPadding + metrics.headerHeight + 12, pageBuf, true);
+  const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
+  GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
+}
+
 void TacticsActivity::loopInspect() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Back) ||
       mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
@@ -923,6 +1083,8 @@ void TacticsActivity::render(RenderLock&&) {
     renderStoryView();
   } else if (mode == Mode::Inspect) {
     renderInspect();
+  } else if (mode == Mode::Rules) {
+    renderRules();
   } else if (mode == Mode::PauseMenu) {
     renderPauseMenu();
   } else {
@@ -936,7 +1098,8 @@ void TacticsActivity::render(RenderLock&&) {
 void TacticsActivity::renderLevelSelect() {
   const int pageWidth = renderer.getScreenWidth();
   const auto& metrics = UITheme::getInstance().getMetrics();
-  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight}, tr(STR_TACTICS));
+  GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.headerHeight},
+                 currentDir.empty() ? tr(STR_TACTICS) : currentDir.c_str());
 
   const int top = metrics.topPadding + metrics.headerHeight + 10;
   const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 14;
@@ -953,9 +1116,17 @@ void TacticsActivity::renderLevelSelect() {
       if (sel) renderer.fillRect(8, y - 4, pageWidth - 16, lineH - 4, true);
       char nameBuf[80];
       const int fileIdx = first + i;
-      const bool hasSave = fileIdx < static_cast<int>(levelHasSave.size()) && levelHasSave[fileIdx];
-      const char* marker = hasSave ? "> " : (isCompleted(levelFiles[fileIdx]) ? "* " : "");
-      std::snprintf(nameBuf, sizeof(nameBuf), "%s%s", marker, levelFiles[fileIdx].c_str());
+      const std::string& entry = levelFiles[fileIdx];
+      if (isDirEntry(entry)) {
+        std::snprintf(nameBuf, sizeof(nameBuf), "[%.*s]", static_cast<int>(entry.size() - 1), entry.c_str());
+      } else {
+        const bool hasSave = fileIdx < static_cast<int>(levelHasSave.size()) && levelHasSave[fileIdx];
+        const char* marker = hasSave ? "> " : (isCompleted(entry) ? "* " : "");
+        // Inside a folder the entries carry the "folder/" prefix; hide it.
+        const char* disp = entry.c_str();
+        if (!currentDir.empty() && entry.size() > currentDir.size() + 1) disp += currentDir.size() + 1;
+        std::snprintf(nameBuf, sizeof(nameBuf), "%s%s", marker, disp);
+      }
       renderer.drawText(UI_12_FONT_ID, 20, y, nameBuf, !sel);
     }
   }
@@ -995,9 +1166,13 @@ void TacticsActivity::renderPauseMenu() {
   renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
   y += renderer.getLineHeight(SMALL_FONT_ID) + 14;
 
-  PauseAction actions[9];
+  PauseAction actions[10];  // must cover every PauseAction
   const int optionCount = buildPauseActions(actions);
-  const int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 12;
+  // Squeeze the row height so the full list stays above the button hints
+  // (landscape with the Undo entry present is the tight case).
+  int lineH = renderer.getLineHeight(UI_12_FONT_ID) + 12;
+  const int avail = renderer.getScreenHeight() - 56 - y;
+  if (optionCount * lineH > avail) lineH = avail / optionCount;
   for (int i = 0; i < optionCount; i++) {
     const char* label = "";
     switch (actions[i]) {
@@ -1012,6 +1187,9 @@ void TacticsActivity::renderPauseMenu() {
         break;
       case PauseAction::Inspect:
         label = tr(STR_TACTICS_INSPECT);
+        break;
+      case PauseAction::HowToPlay:
+        label = tr(STR_TACTICS_HELP);
         break;
       case PauseAction::Danger:
         label = dangerOverlay ? tr(STR_TACTICS_DANGER_ON) : tr(STR_TACTICS_DANGER_OFF);
@@ -1071,20 +1249,36 @@ void TacticsActivity::renderInspect() {
     renderer.drawText(UI_12_FONT_ID, textX, y, I18N.get(UNIT_NAME_IDS[u.type]), true, EpdFontFamily::BOLD);
     std::snprintf(line, sizeof(line), tr(STR_TACTICS_HP), u.hp, info.maxHp);
     renderer.drawText(SMALL_FONT_ID, textX, y + renderer.getLineHeight(UI_12_FONT_ID) + 4, line, true);
-    y += Tactics::SPRITE_SIZE * 2 + 12;
+    // The HP line hangs below the 32px sprite block; leave room for it.
+    y += Tactics::SPRITE_SIZE * 2 + 20;
+  }
 
-    char extras[40] = {0};
-    if (info.regen > 0) std::snprintf(extras, sizeof(extras), tr(STR_TACTICS_REGEN), info.regen);
-    char vision[24];
-    std::snprintf(vision, sizeof(vision), tr(STR_TACTICS_VISION), info.vision);
-    char stats[48];
-    std::snprintf(stats, sizeof(stats), tr(STR_TACTICS_STATLINE), info.attack, info.range, (int)info.defense,
-                  info.move);
-    std::snprintf(line, sizeof(line), "%s  %s  %s %s", stats, vision, extras, info.flies ? tr(STR_TACTICS_FLIES) : "");
-    if (y + lineH <= limit) {
-      renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
-      y += lineH;
+  // One stat per line; skips lines that no longer fit above the button
+  // hints (landscape is much shorter than portrait).
+  auto listLine = [&](const char* text) {
+    if (y + lineH > limit) return;
+    renderer.drawText(SMALL_FONT_ID, 32, y, text, true);
+    y += lineH;
+  };
+
+  if (inspectUnit >= 0) {
+    const Unit& u = game->unit(inspectUnit);
+    const auto& info = u.info();
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_ATK), (int)info.attack);
+    listLine(line);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_RNG), (int)info.range);
+    listLine(line);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_DEF), (int)info.defense);
+    listLine(line);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_MOV), (int)info.move);
+    listLine(line);
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_VISION), (int)info.vision);
+    listLine(line);
+    if (info.regen > 0) {
+      std::snprintf(line, sizeof(line), tr(STR_TACTICS_STAT_REGEN), (int)info.regen);
+      listLine(line);
     }
+    if (info.flies) listLine(tr(STR_TACTICS_STAT_FLIES));
     // Defense breakdown on the tile it stands on.
     int terrainDef = 0;
     int racialDef = 0;
@@ -1095,10 +1289,7 @@ void TacticsActivity::renderInspect() {
     }
     std::snprintf(line, sizeof(line), tr(STR_TACTICS_DEF_BREAKDOWN), game->defenseAt(u, u.x, u.y), (int)info.defense,
                   terrainDef, racialDef);
-    if (y + lineH <= limit) {
-      renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
-      y += lineH;
-    }
+    listLine(line);
     y += 6;
   }
 
@@ -1107,21 +1298,20 @@ void TacticsActivity::renderInspect() {
     renderer.drawText(UI_12_FONT_ID, 24, y, I18N.get(TERRAIN_NAME_IDS[static_cast<int>(t)]), true, EpdFontFamily::BOLD);
     y += renderer.getLineHeight(UI_12_FONT_ID) + 6;
   }
-  char defBuf[24] = {0};
-  char movBuf[24] = {0};
-  char healBuf[24] = {0};
-  if (ti.defense > 0) std::snprintf(defBuf, sizeof(defBuf), tr(STR_TACTICS_TERRAIN_DEF), (int)ti.defense);
-  if (ti.moveCost > 0) std::snprintf(movBuf, sizeof(movBuf), tr(STR_TACTICS_TERRAIN_MOVE), (int)ti.moveCost);
-  if (ti.heal > 0) std::snprintf(healBuf, sizeof(healBuf), tr(STR_TACTICS_TERRAIN_HEAL), (int)ti.heal);
-  std::snprintf(line, sizeof(line), "%s %s %s", defBuf, movBuf, healBuf);
-  if (y + lineH <= limit) {
-    renderer.drawText(SMALL_FONT_ID, 24, y, line, true);
-    y += lineH + 6;
+  if (ti.defense > 0) {
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_TERRAIN_DEF_L), (int)ti.defense);
+    listLine(line);
   }
-
-  if (y + lineH <= limit) {
-    renderer.drawText(SMALL_FONT_ID, 24, y, tr(STR_TACTICS_DMG_RULE), true);
+  if (ti.moveCost > 0) {
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_TERRAIN_MOVE_L), (int)ti.moveCost);
+    listLine(line);
   }
+  if (ti.heal > 0) {
+    std::snprintf(line, sizeof(line), tr(STR_TACTICS_TERRAIN_HEAL_L), (int)ti.heal);
+    listLine(line);
+  }
+  y += 6;
+  listLine(tr(STR_TACTICS_DMG_RULE));
 
   const auto labels = mappedInput.mapLabels(tr(STR_BACK), tr(STR_SELECT), "", "");
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
@@ -1130,25 +1320,47 @@ void TacticsActivity::renderInspect() {
 void TacticsActivity::drawTerrainTile(const int px, const int py, const Terrain t) const {
   switch (t) {
     case Terrain::Forest:
-      for (int i = 0; i < 3; i++) {
-        const int bx = px + 8 + i * 14;
-        const int by = py + (i % 2 ? 14 : 26);
-        renderer.drawLine(bx, by + 12, bx + 5, by, true);
-        renderer.drawLine(bx + 5, by, bx + 10, by + 12, true);
-        renderer.drawLine(bx, by + 12, bx + 10, by + 12, true);
-        renderer.drawLine(bx + 5, by + 12, bx + 5, by + 16, true);
+      // Two layered pines: stacked triangle canopies over a stub trunk.
+      for (int tree = 0; tree < 2; tree++) {
+        const int cx = px + (tree == 0 ? 16 : 35);
+        const int top = py + (tree == 0 ? 5 : 17);
+        const int halfW = tree == 0 ? 13 : 10;
+        const int layers = tree == 0 ? 3 : 2;
+        int y = top;
+        for (int i = 0; i < layers; i++) {
+          const int w = halfW * (i + 2) / (layers + 1);
+          renderer.drawLine(cx, y, cx - w, y + 9, true);
+          renderer.drawLine(cx, y, cx + w, y + 9, true);
+          renderer.drawLine(cx - w, y + 9, cx + w, y + 9, true);
+          y += 6;
+        }
+        renderer.fillRect(cx - 1, top + 6 * (layers - 1) + 9, 3, 5, true);
       }
       break;
     case Terrain::Mountain:
-      renderer.drawLine(px + 4, py + 40, px + 22, py + 8, true);
-      renderer.drawLine(px + 22, py + 8, px + 42, py + 40, true);
-      renderer.drawLine(px + 4, py + 40, px + 42, py + 40, true);
+      // Twin peaks with a snow-line zigzag and light shading on the sunlit
+      // face.
+      renderer.drawLine(px + 29, py + 7, px + 9, py + 41, true);  // main peak
+      renderer.drawLine(px + 29, py + 7, px + 45, py + 41, true);
+      renderer.drawLine(px + 14, py + 20, px + 3, py + 41, true);  // fore peak
+      renderer.drawLine(px + 14, py + 20, px + 22, py + 33, true);
+      renderer.drawLine(px + 3, py + 41, px + 45, py + 41, true);   // base
+      renderer.drawLine(px + 24, py + 16, px + 27, py + 19, true);  // snow line
+      renderer.drawLine(px + 27, py + 19, px + 30, py + 15, true);
+      renderer.drawLine(px + 30, py + 15, px + 33, py + 19, true);
+      renderer.drawLine(px + 33, py + 25, px + 36, py + 32, true);  // shading
+      renderer.drawLine(px + 36, py + 30, px + 39, py + 37, true);
       break;
     case Terrain::Water:
-      for (int i = 0; i < 3; i++) {
-        const int wy = py + 14 + i * 10;
-        for (int s = 0; s < 4; s++) {
-          renderer.drawLine(px + 4 + s * 10, wy + (s % 2 ? 2 : 0), px + 8 + s * 10, wy + (s % 2 ? 0 : 2), true);
+      // Rolling waves: flat-crest runs with soft rises, rows offset.
+      for (int r = 0; r < 3; r++) {
+        const int wy = py + 12 + r * 12;
+        const int off = (r % 2) * 8;
+        for (int x = px + 2 + off; x + 14 <= px + TILE - 2; x += 16) {
+          renderer.drawLine(x, wy + 2, x + 4, wy + 2, true);
+          renderer.drawLine(x + 4, wy + 2, x + 7, wy - 2, true);
+          renderer.drawLine(x + 7, wy - 2, x + 11, wy - 2, true);
+          renderer.drawLine(x + 11, wy - 2, x + 14, wy + 2, true);
         }
       }
       break;
@@ -1171,15 +1383,42 @@ void TacticsActivity::drawTerrainTile(const int px, const int py, const Terrain 
   }
 }
 
-void TacticsActivity::drawDangerSword(const int px, const int py) const {
-  // 12x12 sword, blade pointing up-right, in the tile's top-left corner
-  // (the done-marker owns top-right, the HP bar owns the bottom).
-  const int x = px + 3;
-  const int y = py + 3;
-  renderer.drawLine(x + 3, y + 8, x + 10, y + 1, true);  // blade
-  renderer.drawLine(x + 4, y + 9, x + 11, y + 2, true);  // blade, 2px wide
-  renderer.drawLine(x + 2, y + 6, x + 6, y + 10, true);  // crossguard
-  renderer.fillRect(x + 0, y + 9, 3, 3, true);           // pommel
+void TacticsActivity::drawDangerShade(const int px, const int py) const {
+  // Diagonal hazard hatching: "/" lines where (x + y) % 12 == 0 in tile
+  // space. TILE is a multiple of 12, so the pattern runs continuously
+  // across adjacent danger tiles. Drawn under the unit plate so sprites
+  // and HP bars stay clean.
+  for (int s = 0; s < 2 * TILE - 1; s += 12) {
+    const int x0 = s < TILE ? 0 : s - (TILE - 1);
+    const int x1 = s < TILE ? s : TILE - 1;
+    renderer.drawLine(px + x0, py + s - x0, px + x1, py + s - x1, true);
+  }
+}
+
+void TacticsActivity::drawReachBorder(const int px, const int py, const bool halo) const {
+  // Corner brackets marking a reachable tile — calmer than a full border,
+  // still crisp on the fog dither where the old filled square drowned.
+  // `halo` clears a white margin around each leg first so the brackets
+  // stay readable on top of the fog dithers.
+  constexpr int L = 12, T = 2, IN = 2;
+  if (halo) {
+    renderer.fillRect(px + IN - 1, py + IN - 1, L + 2, T + 2, false);
+    renderer.fillRect(px + IN - 1, py + IN - 1, T + 2, L + 2, false);
+    renderer.fillRect(px + TILE - IN - L - 1, py + IN - 1, L + 2, T + 2, false);
+    renderer.fillRect(px + TILE - IN - T - 1, py + IN - 1, T + 2, L + 2, false);
+    renderer.fillRect(px + IN - 1, py + TILE - IN - T - 1, L + 2, T + 2, false);
+    renderer.fillRect(px + IN - 1, py + TILE - IN - L - 1, T + 2, L + 2, false);
+    renderer.fillRect(px + TILE - IN - L - 1, py + TILE - IN - T - 1, L + 2, T + 2, false);
+    renderer.fillRect(px + TILE - IN - T - 1, py + TILE - IN - L - 1, T + 2, L + 2, false);
+  }
+  renderer.fillRect(px + IN, py + IN, L, T, true);  // top-left
+  renderer.fillRect(px + IN, py + IN, T, L, true);
+  renderer.fillRect(px + TILE - IN - L, py + IN, L, T, true);  // top-right
+  renderer.fillRect(px + TILE - IN - T, py + IN, T, L, true);
+  renderer.fillRect(px + IN, py + TILE - IN - T, L, T, true);  // bottom-left
+  renderer.fillRect(px + IN, py + TILE - IN - L, T, L, true);
+  renderer.fillRect(px + TILE - IN - L, py + TILE - IN - T, L, T, true);  // bottom-right
+  renderer.fillRect(px + TILE - IN - T, py + TILE - IN - L, T, L, true);
 }
 
 void TacticsActivity::drawUnitTile(const int px, const int py, const Unit& u) const {
@@ -1208,6 +1447,21 @@ void TacticsActivity::drawUnitTile(const int px, const int py, const Unit& u) co
 }
 
 void TacticsActivity::renderBoard() {
+  // Recompute the danger mask against *current* fog every time the board
+  // is drawn. The mask is a view cache: refreshing it here (instead of
+  // trusting whichever gameplay event computed it last) guarantees a
+  // hidden enemy's threat can never linger on screen after vision shifts
+  // mid-turn (auto-committed moves, enemy-phase steps, unit deaths).
+  // ~1ms on a 48x32 map — noise next to the e-ink refresh itself.
+  if (mode == Mode::Cursor && hoverEnemy >= 0) {
+    game->computeDangerZones(hoverEnemy);
+    game->computeReach(hoverEnemy);  // hover walk area (danger trashed it)
+  } else if (mode == Mode::MoveSelect) {
+    game->computeDangerZones();
+    game->computeReach(selectedUnit);  // movement overlay + commit both need it
+  } else if (dangerOverlay) {
+    game->computeDangerZones();
+  }
   const int cols = viewCols();
   const int rows = viewRows();
   for (int vy = 0; vy < rows; vy++) {
@@ -1218,28 +1472,32 @@ void TacticsActivity::renderBoard() {
       const int py = vy * TILE;
       if (mx >= level->width || my >= level->height) continue;
       const Terrain t = level->at(mx, my);
+      // Hovering a visible enemy shows that enemy's ranges: brackets on
+      // its walk area, hazard hatching on the attack fringe beyond it.
+      const bool hover = mode == Mode::Cursor && hoverEnemy >= 0;
+      const bool reachHere = (mode == Mode::MoveSelect || hover) && game->isReachable(mx, my);
       if (!game->isExplored(mx, my)) {
         renderer.fillRectDither(px, py, TILE, TILE, Color::DarkGray);
+        // Units can walk into the unknown; mark it (haloed for contrast).
+        if (reachHere) drawReachBorder(px, py, true);
         continue;
       }
       if (t == Terrain::Void) continue;
       drawTerrainTile(px, py, t);
       const bool vis = game->isVisible(mx, my);
+      // Danger tiles get hazard hatching under the unit plate. Always
+      // shown while choosing a destination or hovering an enemy;
+      // elsewhere only when toggled on.
+      bool danger = (dangerOverlay || mode == Mode::MoveSelect || hover) && vis && game->isDangerous(mx, my);
+      if (hover && reachHere) danger = false;  // walk area: brackets only
+      if (danger) drawDangerShade(px, py);
       if (vis) {
         const int ui = game->unitIndexAt(mx, my);
         if (ui >= 0) drawUnitTile(px, py, game->unit(ui));
       } else {
         renderer.fillRectDither(px, py, TILE, TILE, Color::LightGray);
       }
-      // Movement overlay for the selected unit.
-      if (mode == Mode::MoveSelect && game->isReachable(mx, my)) {
-        renderer.fillRect(px + (TILE - 7) / 2, py + (TILE - 7) / 2, 7, 7, true);
-      }
-      // Danger marker: a small sword in the tile's top-left corner. Always
-      // shown while choosing a destination; elsewhere only when toggled on.
-      if ((dangerOverlay || mode == Mode::MoveSelect) && vis && game->isDangerous(mx, my)) {
-        drawDangerSword(px, py);
-      }
+      if (reachHere) drawReachBorder(px, py, !vis);
     }
   }
   // Cursor / target highlight
@@ -1287,8 +1545,9 @@ void TacticsActivity::renderHud() {
   // Right: unit under cursor (if visible), or attack forecast
   if (mode == Mode::TargetSelect && targetCount > 0) {
     const Game::Forecast f = game->forecast(selectedUnit, targets[targetSel]);
-    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d", I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]),
-                  game->unit(targets[targetSel]).hp, f.damageToTarget, f.counterDamage);
+    std::snprintf(line, sizeof(line), "%s %d  >%d  <%d%s%s",
+                  I18N.get(UNIT_NAME_IDS[game->unit(targets[targetSel]).type]), game->unit(targets[targetSel]).hp,
+                  f.damageToTarget, f.counterDamage, f.flank ? "  " : "", f.flank ? tr(STR_TACTICS_FLANK) : "");
     const int tw = renderer.getTextWidth(SMALL_FONT_ID, line);
     renderer.drawText(SMALL_FONT_ID, pageWidth - tw - 16, top + 10, line, true);
   } else {
