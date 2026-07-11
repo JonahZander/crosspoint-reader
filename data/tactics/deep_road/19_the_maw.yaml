@@ -19,11 +19,12 @@ map: |
   ^..............^
   ^^^^^^^^^^^^^^^^
 units:
+  # Warden Brakka Stonewrit lays down the chronicle and takes up an axe.
   - {type: dwarf_warrior, at: [7, 1], side: player}
   - {type: dwarf_thunderer, at: [8, 1], side: player}
   - {type: dwarf_guard, at: [7, 2], side: player}
+  - {type: dwarf_warrior, at: [8, 2], side: player}
   - {type: orc, at: [4, 6], side: enemy}
-  - {type: orc, at: [11, 6], side: enemy}
   - {type: goblin_slinger, at: [6, 8], side: enemy}
   - {type: goblin_slinger, at: [9, 8], side: enemy}
   - {type: wyvern, at: [2, 7], side: enemy}

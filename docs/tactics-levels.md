@@ -52,7 +52,10 @@ units:
 
 ## Unit types
 
-`side: player` and `side: enemy` (alias `monsters`) accept any type.
+`side: player` and `side: enemy` (alias `monsters`) accept any type — any
+faction can fight any other (humans vs. evil humans works). Enemy-side units
+render inverted (white sprite on a black plate) regardless of race, and the
+AI plays them like any other enemy.
 
 | id | HP | Move | Atk | Rng | Def | Notes |
 |----|----|------|-----|-----|-----|-------|
@@ -90,8 +93,16 @@ Authoring notes:
   Flyers never get terrain defense.
 - The defender counterattacks if it survives and the attacker is within
   its range — ranged units can safely poke melee units from 2 tiles.
+- Flanking: a melee strike with an allied unit on the tile directly
+  opposite the attacker deals +50% damage. Works for both sides and for
+  counterattacks — and the enemy AI actively seeks pincer positions and
+  prioritizes your hard hitters and ranged units, so guard your backline.
 - Zones of control: entering a tile adjacent to an enemy ends movement
   (flyers ignore this).
+- Parting blows: a ground unit that moves out of contact with an adjacent
+  awake enemy takes a free half-damage hit from it on the way out (and
+  such a move can't be undone). Flyers disengage freely; dormant guards
+  (only possible with `aggro: 0`) sleep through it.
 - Fog of war: you see a manhattan radius around each unit (+2 on a
   mountain). Explored terrain stays visible; enemy units don't.
 - Monsters are dormant guards until a player unit comes within `aggro`
@@ -102,18 +113,25 @@ Authoring notes:
 
 ## Story files and campaigns
 
-Plain-text `.story` files in `/tactics` sort alongside the `.yaml` battles,
-and that filename order **is** the campaign: after a victory, Continue opens
-the next file in order — story interlude or battle. Stories open in a paged
+Plain-text `.story` files sort alongside the `.yaml` battles, and that
+filename order **is** the campaign: after a victory, Continue opens the
+next file in order — story interlude or battle. Stories open in a paged
 viewer (page-turn buttons; Back skips at any time), completed battles get a
 `*` in the level list, and a battle in progress keeps its `>` resume marker.
+
+**Campaigns live in folders**: each subdirectory of `/tactics` is its own
+campaign. The level list shows folders first as `[name]`; open one to see
+its battles and stories, Back returns to the root. Loose files in
+`/tactics` itself still work and chain among themselves. (One level of
+folders only — subfolders inside campaigns are ignored.)
 
 Conventions: prefix files with a sort number (`10_prologue.story`,
 `11_first_battle.yaml`, …), keep stories under 16 KB, separate paragraphs
 with blank lines. The shipped dwarf campaign **The Deep Road**
-(`10_…`–`20_…`) is the reference; its balance is enforced by automated
-playthroughs in `test/tactics/CampaignPlaytest.cpp` — if you tweak its
-levels, run the host tests.
+(`data/tactics/deep_road/`) is the reference; its balance is enforced by
+automated playthroughs in `test/tactics/CampaignPlaytest.cpp`, which assert
+a survivor *band* per battle — the floor catches "unwinnable", the ceiling
+catches "flawless sweep, too easy". If you tweak levels, run the host tests.
 
 ## Playing on the desktop
 

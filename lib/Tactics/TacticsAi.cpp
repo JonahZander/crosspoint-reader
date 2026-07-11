@@ -7,7 +7,8 @@
 //
 // An awake unit is a greedy scorer: it evaluates every (reachable tile,
 // attackable target) pair and picks the highest-scoring attack, preferring
-// kills, avoiding lethal counterattacks and favouring defensive terrain.
+// kills, flank positions and high-threat targets (hard hitters, ranged),
+// avoiding lethal counterattacks and favouring defensive terrain.
 // With no target in reach it walks down a cached distance-to-nearest-player
 // field instead.
 #include <cstring>
@@ -137,7 +138,13 @@ Game::AiAction Game::executeAiUnit(const int unitIdx) {
         const int dist = manhattan(x, y, p.x, p.y);
         if (dist < 1 || dist > u.info().range) continue;
         const int dmgRaw = u.info().attack * (100 - defenseAt(p, p.x, p.y)) / 100;
-        const int dmg = dmgRaw < 1 ? 1 : dmgRaw;
+        int dmg = dmgRaw < 1 ? 1 : dmgRaw;
+        // Flank-seeking: an ally already on the tile directly opposite the
+        // candidate tile makes this a pincer (+50%, mirrors damage()).
+        if (dist == 1) {
+          const int ally = unitIndexAt(2 * p.x - x, 2 * p.y - y);
+          if (ally >= 0 && ally != unitIdx && units_[ally].side == u.side) dmg = dmg * 3 / 2;
+        }
         const bool kills = dmg >= p.hp;
         int counter = 0;
         if (!kills && dist <= p.info().range) {
@@ -145,6 +152,8 @@ Game::AiAction Game::executeAiUnit(const int unitIdx) {
           counter = c < 1 ? 1 : c;
         }
         int score = dmg * 10 + ownDef;
+        // Backline pressure: hard hitters and ranged units are worth more.
+        score += p.info().attack * 2 + (p.info().range > 1 ? 10 : 0);
         if (kills) score += 500;
         score -= counter * 7;
         if (counter >= u.hp) score -= 400;  // don't suicide into counters
