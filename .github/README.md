@@ -6,7 +6,7 @@ with flanking and zones of control, fog of war, a flank-seeking AI, two story
 campaigns, and battle save/resume — running on the ESP32-C3 next to the EPUB
 engine it politely shares ~380 KB of RAM with. A full battle fits in 5.6 KB.
 
-![A complete battle in the host simulator](docs/images/tactics/gates_battle.gif)
+![A complete battle in the host simulator](../docs/images/tactics/gates_battle.gif)
 
 Open it from the home menu: **Home → Tactics**.
 
@@ -33,7 +33,7 @@ Open it from the home menu: **Home → Tactics**.
 
 | | |
 |---|---|
-| ![Fog of war on The Hidden Warren](docs/images/tactics/warren_deploy_fog.png) | ![The full bestiary on the Parade Ground](docs/images/tactics/bestiary_parade_ground.png) |
+| ![Fog of war on The Hidden Warren](../docs/images/tactics/warren_deploy_fog.png) | ![The full bestiary on the Parade Ground](../docs/images/tactics/bestiary_parade_ground.png) |
 
 ## Where the code lives
 
@@ -57,7 +57,7 @@ Only six upstream files are touched: the home menu (2), the activity manager
 ## Writing your own levels
 
 Levels are hand-editable text files dropped into `/tactics` on the SD card —
-see [docs/tactics-levels.md](docs/tactics-levels.md) for the format, the unit
+see [docs/tactics-levels.md](../docs/tactics-levels.md) for the format, the unit
 bestiary, terrain rules, and the level-design notes.
 
 ## Building and running
@@ -73,3 +73,7 @@ build/test/tactics_sim/TacticsSim data/tactics/deep_road/11_the_gates.yaml
 All credit for the reader itself goes to the upstream
 [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)
 project — this branch only adds the game.
+
+---
+
+Looking for the reader itself? Upstream's own documentation is in the root [README.md](../README.md).
