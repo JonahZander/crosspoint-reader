@@ -805,6 +805,116 @@ TEST(Ai, AnyFactionCanBeTheEnemy) {
   EXPECT_LT(act.toX, 9);  // the enemy knight hunts the player's orc
 }
 
+TEST(Combat, RangedDefenderCountersAtRangeTwo) {
+  // Counters key off the defender's own range: a goblin_slinger (range 2)
+  // strikes back at an archer poking it from distance 2 — unlike melee,
+  // which ArcherOutrangesMeleeCounter shows staying silent.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ....\n"
+      "units:\n"
+      "  - {type: human_archer, at: [0, 0], side: player}\n"
+      "  - {type: goblin_slinger, at: [2, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const Game::Forecast f = game.forecast(0, 1);
+  // Archer atk 7 vs slinger def 0 on plain: 7. Slinger counter: atk 6 vs
+  // archer def 5 -> 6*95/100 = 5.
+  EXPECT_EQ(f.damageToTarget, 7);
+  EXPECT_EQ(f.counterDamage, 5);
+}
+
+TEST(Combat, SlingerAtRangeTwoDrawsNoMeleeCounter) {
+  // The flip side: a slinger firing from distance 2 at a melee unit
+  // (range 1) is out of the defender's reach — no counter.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ....\n"
+      "units:\n"
+      "  - {type: goblin_slinger, at: [0, 0], side: player}\n"
+      "  - {type: orc, at: [2, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const Game::Forecast f = game.forecast(0, 1);
+  EXPECT_GT(f.damageToTarget, 0);
+  EXPECT_EQ(f.counterDamage, 0);
+}
+
+TEST(DangerZones, RangeTwoThreatExtendsTwoPastWalkEdge) {
+  // Slinger: move 5, range 2. From (10,0) on an open row it can stand on
+  // x >= 5 and strike two tiles further, so the danger mask must reach
+  // exactly x = 3.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  .............\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [0, 0], side: player}\n"
+      "  - {type: goblin_slinger, at: [10, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  game.computeDangerZones(1);  // hover variant: ignores fog
+  game.computeReach(1);
+  EXPECT_TRUE(game.isReachable(5, 0));   // walk edge (move 5)
+  EXPECT_FALSE(game.isReachable(4, 0));  // beyond the move budget
+  EXPECT_TRUE(game.isDangerous(4, 0));   // walk edge + 1
+  EXPECT_TRUE(game.isDangerous(3, 0));   // walk edge + 2 (range 2)
+  EXPECT_FALSE(game.isDangerous(2, 0));  // beyond move + range
+}
+
+TEST(Ai, TurnLimitOnDefeatAllMapIsDefeat) {
+  // turns: on a defeat_all map is a deadline, not a survival goal — when
+  // it expires with enemies still standing, the player loses.
+  Level level;
+  const char* text =
+      "turns: 2\n"
+      "aggro: 0\n"
+      "map: |\n"
+      "  ..........\n"
+      "units:\n"
+      "  - {type: dwarf_guard, at: [0, 0], side: player}\n"
+      "  - {type: goblin, at: [9, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  ASSERT_EQ(level.win, WinCondition::DefeatAll);
+  Game game;
+  game.start(level);
+  for (int i = 0; i < 4 && game.status() == Game::Status::Playing; i++) {
+    game.finishUnit(0);
+    game.endPlayerTurn();
+    while (game.aiStep().acted) {
+    }
+  }
+  EXPECT_EQ(game.status(), Game::Status::Defeat);
+}
+
+TEST(Combat, NoFlankAgainstDefenderOnBoardEdge) {
+  // The pincer check looks at the tile directly behind the defender; with
+  // the defender on the edge that tile is off-board, which must read as
+  // "no ally there" rather than misindexing.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ....\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [1, 0], side: player}\n"
+      "  - {type: goblin, at: [0, 0], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  const Game::Forecast f = game.forecast(0, 1);  // tile behind = (-1, 0)
+  EXPECT_FALSE(f.flank);
+  EXPECT_EQ(f.damageToTarget, 8);  // unboosted: atk 8 vs def 0 on plain
+}
+
 TEST(Balance, KnightIsSlowedToFive) {
   const int idx = unitTypeFromId("human_knight");
   ASSERT_GE(idx, 0);
