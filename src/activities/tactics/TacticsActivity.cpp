@@ -79,12 +79,6 @@ void TacticsActivity::savePath(char* out, const size_t outLen) const { savFileNa
 
 bool TacticsActivity::saveBattle() {
   if (!game || game->status() != Game::Status::Playing || currentLevelFile.empty()) return false;
-  auto blob = makeUniqueNoThrow<uint8_t[]>(Game::stateSize());
-  if (!blob) {
-    LOG_ERR("TACTICS", "OOM: %u bytes for save", (unsigned)Game::stateSize());
-    return false;
-  }
-  game->exportState(blob.get());
   Storage.mkdir(SAVES_DIR);
   char path[128];
   savePath(path, sizeof(path));
@@ -97,7 +91,9 @@ bool TacticsActivity::saveBattle() {
   ok = ok && file.write(&version, sizeof(version)) == sizeof(version);
   ok = ok && file.write(&levelCrc, sizeof(levelCrc)) == sizeof(levelCrc);
   ok = ok && file.write(&size, sizeof(size)) == sizeof(size);
-  ok = ok && file.write(blob.get(), size) == size;
+  // Game is trivially copyable (see exportState), so the object's own bytes
+  // are the serialisation — no staging blob needed.
+  ok = ok && file.write(reinterpret_cast<const uint8_t*>(game.get()), size) == size;
   if (!ok) {
     LOG_ERR("TACTICS", "Short write on %s", path);
   } else {
