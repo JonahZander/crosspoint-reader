@@ -403,6 +403,23 @@ bool Game::importState(const void* in) {
   if (src->level_.width < 1 || src->level_.width > MAX_MAP_W) return false;
   if (src->level_.height < 1 || src->level_.height > MAX_MAP_H) return false;
   if (src->status_ != Status::Playing) return false;  // only mid-battle saves exist
+  if (src->phase_ != Phase::Player && src->phase_ != Phase::Enemy) return false;
+  // The save header's CRC covers the level file, not this blob, so every
+  // index that feeds an array lookup must be validated here: a corrupted
+  // unit type or tile byte would read out of UNIT_TYPES / TERRAIN_INFO.
+  for (int i = 0; i < src->unitCount_; i++) {
+    const Unit& u = src->units_[i];
+    if (u.type >= UNIT_TYPE_COUNT) return false;
+    if (u.side != Side::Player && u.side != Side::Enemy) return false;
+    if (u.x < 0 || u.x >= src->level_.width) return false;
+    if (u.y < 0 || u.y >= src->level_.height) return false;
+    if (static_cast<int>(u.hp) > static_cast<int>(u.info().maxHp)) return false;
+  }
+  for (int y = 0; y < src->level_.height; y++) {
+    for (int x = 0; x < src->level_.width; x++) {
+      if (src->level_.tiles[y * MAX_MAP_W + x] >= TERRAIN_COUNT) return false;
+    }
+  }
   std::memcpy(this, src, sizeof(Game));
   return true;
 }

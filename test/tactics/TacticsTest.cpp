@@ -558,7 +558,9 @@ TEST(SaveState, ResumesMidEnemyPhaseAndFinishesItOnce) {
   EXPECT_EQ(restored.turn(), 2);
   for (int i = 0; i < restored.unitCount(); i++) {
     const Unit& u = restored.unit(i);
-    if (u.alive && u.side == Side::Player) EXPECT_FALSE(u.acted) << "unit " << i;
+    if (u.alive && u.side == Side::Player) {
+      EXPECT_FALSE(u.acted) << "unit " << i;
+    }
   }
 }
 
@@ -566,6 +568,71 @@ TEST(SaveState, RejectsGarbage) {
   static uint8_t blob[sizeof(Game)];
   std::memset(blob, 0xAB, sizeof(blob));
   Game g;
+  EXPECT_FALSE(g.importState(blob));
+}
+
+namespace {
+
+// Byte offset of `pat` inside the blob, or -1. Used to corrupt specific
+// fields of an exported snapshot without reaching into Game's privates.
+int findPattern(const uint8_t* blob, const size_t blobLen, const uint8_t* pat, const size_t patLen) {
+  for (size_t i = 0; i + patLen <= blobLen; i++) {
+    if (std::memcmp(blob + i, pat, patLen) == 0) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+}  // namespace
+
+TEST(SaveState, RejectsOutOfRangeUnitType) {
+  // The save header CRC covers the level file, not the blob: a valid-looking
+  // snapshot with units_[i].type = 255 would index UNIT_TYPES[255] on the
+  // first info() call. Import must reject it.
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  static uint8_t blob[sizeof(Game)];
+  game.exportState(blob);
+  Game g;
+  ASSERT_TRUE(g.importState(blob));  // pristine blob is fine
+
+  // Unit 2 is the goblin at (8, 0): {type, side, x, y, hp, acted, alive,
+  // aggro} = {12, 1, 8, 0, 18, 0, 1, 0}.
+  const uint8_t goblin[8] = {12, 1, 8, 0, 18, 0, 1, 0};
+  const int off = findPattern(blob, sizeof(blob), goblin, sizeof(goblin));
+  ASSERT_GE(off, 0);
+  blob[off] = 255;  // type
+  EXPECT_FALSE(g.importState(blob));
+}
+
+TEST(SaveState, RejectsOutOfRangeTile) {
+  // Same story for terrain: tiles[i] = 200 would index TERRAIN_INFO[200]
+  // in moveCostFor/defenseAt.
+  Level level;
+  const char* text =
+      "aggro: 30\n"
+      "map: |\n"
+      "  ..........\n"
+      "  ..C#~^B...\n"
+      "  ..........\n"
+      "units:\n"
+      "  - {type: human_soldier, at: [0, 0], side: player}\n"
+      "  - {type: goblin, at: [9, 2], side: enemy}\n";
+  ASSERT_TRUE(parse(text, level));
+  Game game;
+  game.start(level);
+  static uint8_t blob[sizeof(Game)];
+  game.exportState(blob);
+  Game g;
+  ASSERT_TRUE(g.importState(blob));
+
+  // Row 1 of the map, "..C#~^B" = {Plain, Plain, Castle, Rock, Water,
+  // Mountain, EnemyBase} — a distinctive tile byte run.
+  const uint8_t row[7] = {1, 1, 6, 5, 4, 3, 7};
+  const int off = findPattern(blob, sizeof(blob), row, sizeof(row));
+  ASSERT_GE(off, 0);
+  blob[off + 2] = 200;  // the Castle tile
   EXPECT_FALSE(g.importState(blob));
 }
 
