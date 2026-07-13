@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Memory.h>
+#include <TacticsBoardArt.h>
 #include <TacticsSprites.h>
 
 #include <algorithm>
@@ -25,7 +26,7 @@ constexpr const char* LEVELS_DIR = "/tactics";
 constexpr const char* SAVES_DIR = "/.crosspoint/tactics";
 constexpr uint32_t SAVE_MAGIC = 0x54534156;  // "TSAV"
 constexpr uint8_t SAVE_VERSION = 1;
-constexpr int TILE = 48;
+constexpr int TILE = Tactics::BoardArt::TILE;  // 48px board tiles, shared with the sim
 constexpr int HUD_HEIGHT = 96;
 constexpr const char* COMPLETED_FILE = "/.crosspoint/tactics/completed.txt";
 constexpr size_t MAX_LEVEL_FILE = 16 * 1024;
@@ -1317,133 +1318,23 @@ void TacticsActivity::renderInspect() {
   GUI.drawButtonHints(renderer, labels.btn1, labels.btn2, labels.btn3, labels.btn4);
 }
 
+// The tile art lives in TacticsBoardArt.h (lib/Tactics), templated on the
+// renderer so the host simulator draws with the identical code. These thin
+// wrappers keep the activity's call sites unchanged.
 void TacticsActivity::drawTerrainTile(const int px, const int py, const Terrain t) const {
-  switch (t) {
-    case Terrain::Forest:
-      // Two layered pines: stacked triangle canopies over a stub trunk.
-      for (int tree = 0; tree < 2; tree++) {
-        const int cx = px + (tree == 0 ? 16 : 35);
-        const int top = py + (tree == 0 ? 5 : 17);
-        const int halfW = tree == 0 ? 13 : 10;
-        const int layers = tree == 0 ? 3 : 2;
-        int y = top;
-        for (int i = 0; i < layers; i++) {
-          const int w = halfW * (i + 2) / (layers + 1);
-          renderer.drawLine(cx, y, cx - w, y + 9, true);
-          renderer.drawLine(cx, y, cx + w, y + 9, true);
-          renderer.drawLine(cx - w, y + 9, cx + w, y + 9, true);
-          y += 6;
-        }
-        renderer.fillRect(cx - 1, top + 6 * (layers - 1) + 9, 3, 5, true);
-      }
-      break;
-    case Terrain::Mountain:
-      // Twin peaks with a snow-line zigzag and light shading on the sunlit
-      // face.
-      renderer.drawLine(px + 29, py + 7, px + 9, py + 41, true);  // main peak
-      renderer.drawLine(px + 29, py + 7, px + 45, py + 41, true);
-      renderer.drawLine(px + 14, py + 20, px + 3, py + 41, true);  // fore peak
-      renderer.drawLine(px + 14, py + 20, px + 22, py + 33, true);
-      renderer.drawLine(px + 3, py + 41, px + 45, py + 41, true);   // base
-      renderer.drawLine(px + 24, py + 16, px + 27, py + 19, true);  // snow line
-      renderer.drawLine(px + 27, py + 19, px + 30, py + 15, true);
-      renderer.drawLine(px + 30, py + 15, px + 33, py + 19, true);
-      renderer.drawLine(px + 33, py + 25, px + 36, py + 32, true);  // shading
-      renderer.drawLine(px + 36, py + 30, px + 39, py + 37, true);
-      break;
-    case Terrain::Water:
-      // Rolling waves: flat-crest runs with soft rises, rows offset.
-      for (int r = 0; r < 3; r++) {
-        const int wy = py + 12 + r * 12;
-        const int off = (r % 2) * 8;
-        for (int x = px + 2 + off; x + 14 <= px + TILE - 2; x += 16) {
-          renderer.drawLine(x, wy + 2, x + 4, wy + 2, true);
-          renderer.drawLine(x + 4, wy + 2, x + 7, wy - 2, true);
-          renderer.drawLine(x + 7, wy - 2, x + 11, wy - 2, true);
-          renderer.drawLine(x + 11, wy - 2, x + 14, wy + 2, true);
-        }
-      }
-      break;
-    case Terrain::Rock:
-      renderer.fillRect(px + 2, py + 2, TILE - 4, TILE - 4, true);
-      break;
-    case Terrain::Castle:
-      renderer.drawRect(px + 8, py + 16, 32, 24, 2, true);
-      for (int i = 0; i < 4; i++) renderer.fillRect(px + 8 + i * 9, py + 10, 5, 8, true);
-      renderer.fillRect(px + 20, py + 28, 8, 12, true);
-      break;
-    case Terrain::EnemyBase:
-      renderer.drawRect(px + 6, py + 14, 36, 26, 3, true);
-      renderer.drawLine(px + 24, py + 14, px + 24, py + 2, true);
-      renderer.drawLine(px + 24, py + 2, px + 38, py + 6, true);
-      renderer.drawLine(px + 38, py + 6, px + 24, py + 10, true);
-      break;
-    default:
-      break;
-  }
+  Tactics::BoardArt::drawTerrainTile(renderer, px, py, t);
 }
 
 void TacticsActivity::drawDangerShade(const int px, const int py) const {
-  // Diagonal hazard hatching: "/" lines where (x + y) % 12 == 0 in tile
-  // space. TILE is a multiple of 12, so the pattern runs continuously
-  // across adjacent danger tiles. Drawn under the unit plate so sprites
-  // and HP bars stay clean.
-  for (int s = 0; s < 2 * TILE - 1; s += 12) {
-    const int x0 = s < TILE ? 0 : s - (TILE - 1);
-    const int x1 = s < TILE ? s : TILE - 1;
-    renderer.drawLine(px + x0, py + s - x0, px + x1, py + s - x1, true);
-  }
+  Tactics::BoardArt::drawDangerShade(renderer, px, py);
 }
 
 void TacticsActivity::drawReachBorder(const int px, const int py, const bool halo) const {
-  // Corner brackets marking a reachable tile — calmer than a full border,
-  // still crisp on the fog dither where the old filled square drowned.
-  // `halo` clears a white margin around each leg first so the brackets
-  // stay readable on top of the fog dithers.
-  constexpr int L = 12, T = 2, IN = 2;
-  if (halo) {
-    renderer.fillRect(px + IN - 1, py + IN - 1, L + 2, T + 2, false);
-    renderer.fillRect(px + IN - 1, py + IN - 1, T + 2, L + 2, false);
-    renderer.fillRect(px + TILE - IN - L - 1, py + IN - 1, L + 2, T + 2, false);
-    renderer.fillRect(px + TILE - IN - T - 1, py + IN - 1, T + 2, L + 2, false);
-    renderer.fillRect(px + IN - 1, py + TILE - IN - T - 1, L + 2, T + 2, false);
-    renderer.fillRect(px + IN - 1, py + TILE - IN - L - 1, T + 2, L + 2, false);
-    renderer.fillRect(px + TILE - IN - L - 1, py + TILE - IN - T - 1, L + 2, T + 2, false);
-    renderer.fillRect(px + TILE - IN - T - 1, py + TILE - IN - L - 1, T + 2, L + 2, false);
-  }
-  renderer.fillRect(px + IN, py + IN, L, T, true);  // top-left
-  renderer.fillRect(px + IN, py + IN, T, L, true);
-  renderer.fillRect(px + TILE - IN - L, py + IN, L, T, true);  // top-right
-  renderer.fillRect(px + TILE - IN - T, py + IN, T, L, true);
-  renderer.fillRect(px + IN, py + TILE - IN - T, L, T, true);  // bottom-left
-  renderer.fillRect(px + IN, py + TILE - IN - L, T, L, true);
-  renderer.fillRect(px + TILE - IN - L, py + TILE - IN - T, L, T, true);  // bottom-right
-  renderer.fillRect(px + TILE - IN - T, py + TILE - IN - L, T, L, true);
+  Tactics::BoardArt::drawReachBorder(renderer, px, py, halo);
 }
 
 void TacticsActivity::drawUnitTile(const int px, const int py, const Unit& u) const {
-  const bool player = u.side == Side::Player;
-  // 16x16 sprite drawn 2x (32x32) on a plate: white plate with black
-  // pixels for player units, inverted for enemies. Sprites live in flash
-  // (TacticsSprites.h) and are shared with the host simulator.
-  const int ox = px + (TILE - 2 * Tactics::SPRITE_SIZE) / 2;
-  const int oy = py + 3;
-  renderer.fillRect(ox - 2, oy - 2, 2 * Tactics::SPRITE_SIZE + 4, 2 * Tactics::SPRITE_SIZE + 4, !player);
-  for (int sy = 0; sy < Tactics::SPRITE_SIZE; sy++) {
-    for (int sx = 0; sx < Tactics::SPRITE_SIZE; sx++) {
-      if (Tactics::spritePixel(u.type, sx, sy)) {
-        renderer.fillRect(ox + sx * 2, oy + sy * 2, 2, 2, player);
-      }
-    }
-  }
-  // HP bar
-  const int barW = TILE - 12;
-  const int fill = barW * u.hp / u.info().maxHp;
-  renderer.drawRect(px + 6, py + TILE - 9, barW, 5, 1, true);
-  renderer.fillRect(px + 6, py + TILE - 9, fill, 5, true);
-  if (player && u.acted) {
-    renderer.fillRect(px + TILE - 12, py + 2, 8, 8, true);  // done marker
-  }
+  Tactics::BoardArt::drawUnitTile(renderer, px, py, u);
 }
 
 void TacticsActivity::renderBoard() {
@@ -1509,10 +1400,7 @@ void TacticsActivity::renderBoard() {
   if (mode == Mode::Cursor || mode == Mode::MoveSelect || mode == Mode::TargetSelect) {
     const int px = (cx - camX) * TILE;
     const int py = (cy - camY) * TILE;
-    renderer.drawRect(px, py, TILE, TILE, 3, true);
-    if (mode == Mode::TargetSelect) {
-      renderer.drawRect(px + 4, py + 4, TILE - 8, TILE - 8, 2, true);
-    }
+    Tactics::BoardArt::drawCursor(renderer, px, py, mode == Mode::TargetSelect);
   }
 }
 
