@@ -153,6 +153,7 @@ class TacticsActivity final : public Activity {
   void drawReachBorder(int px, int py, bool halo = false) const;
   void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
+  void enterEnemyTurn();  // hands the turn to the AI, starts playback
 
   // Battle save/resume (versioned blob in /.crosspoint/tactics/)
   std::string currentLevelFile;  // set by loadLevel

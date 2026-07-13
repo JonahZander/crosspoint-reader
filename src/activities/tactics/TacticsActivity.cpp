@@ -749,16 +749,20 @@ void TacticsActivity::beginTargetSelect() {
   mode = Mode::TargetSelect;
 }
 
+void TacticsActivity::enterEnemyTurn() {
+  undoUnit = -1;  // the enemy phase makes every move final
+  game->endPlayerTurn();
+  lastAiStepMs = millis();
+  std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
+  mode = Mode::EnemyTurn;
+}
+
 void TacticsActivity::finishSelectedUnit() {
   if (selectedUnit >= 0) game->finishUnit(selectedUnit);
   selectedUnit = -1;
   if (dangerOverlay) game->computeDangerZones();
   if (game->allPlayerUnitsActed()) {
-    undoUnit = -1;  // the enemy phase makes every move final
-    game->endPlayerTurn();
-    lastAiStepMs = millis();
-    std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
-    mode = Mode::EnemyTurn;
+    enterEnemyTurn();
   } else {
     const int next = nearestReadyUnit(cursorX, cursorY);
     if (next >= 0) {
@@ -791,29 +795,18 @@ void TacticsActivity::loopTargetSelect() {
   if (mappedInput.wasReleased(MappedInputManager::Button::Confirm)) {
     game->attack(selectedUnit, targets[targetSel]);
     undoUnit = -1;  // fights are never undone
-    selectedUnit = -1;
-    if (dangerOverlay) game->computeDangerZones();
     if (game->status() != Game::Status::Playing) {
+      selectedUnit = -1;
+      if (dangerOverlay) game->computeDangerZones();
       deleteSave();
       mode = Mode::GameOver;
       requestUpdate();
       return;
     }
-    if (game->allPlayerUnitsActed()) {
-      game->endPlayerTurn();
-      lastAiStepMs = millis();
-      std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
-      mode = Mode::EnemyTurn;
-    } else {
-      const int next = nearestReadyUnit(cursorX, cursorY);
-      if (next >= 0) {
-        cursorX = game->unit(next).x;
-        cursorY = game->unit(next).y;
-        ensureCursorVisible();
-      }
-      mode = Mode::Cursor;
-    }
-    requestUpdate();
+    // attack() already marked the unit as acted, so the finishUnit inside
+    // is a no-op; the rest (danger refresh, next-unit jump or enemy turn)
+    // is exactly the shared end-of-action sequence.
+    finishSelectedUnit();
   }
 }
 
@@ -894,11 +887,7 @@ void TacticsActivity::loopPauseMenu() {
         for (int i = 0; i < game->unitCount(); i++) {
           if (game->unit(i).alive && game->unit(i).side == Side::Player) game->finishUnit(i);
         }
-        undoUnit = -1;  // the enemy phase makes every move final
-        game->endPlayerTurn();
-        lastAiStepMs = millis();
-        std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
-        mode = Mode::EnemyTurn;
+        enterEnemyTurn();
         break;
       case PauseAction::Restart:
         game->start(*level);
