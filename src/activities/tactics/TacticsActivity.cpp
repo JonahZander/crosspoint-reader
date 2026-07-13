@@ -741,14 +741,6 @@ void TacticsActivity::deleteSave() {
   if (Storage.exists(path)) Storage.remove(path);
 }
 
-void TacticsActivity::beginTargetSelect() {
-  const Unit& u = game->unit(selectedUnit);
-  targetCount = game->targetsFrom(selectedUnit, u.x, u.y, targets, 8);
-  if (targetCount == 0) return;  // shouldn't happen: Attack is hidden without targets
-  targetSel = 0;
-  mode = Mode::TargetSelect;
-}
-
 void TacticsActivity::enterEnemyTurn() {
   undoUnit = -1;  // the enemy phase makes every move final
   game->endPlayerTurn();

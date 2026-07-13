@@ -151,7 +151,6 @@ class TacticsActivity final : public Activity {
   void drawUnitTile(int px, int py, const Tactics::Unit& u) const;
   void drawDangerShade(int px, int py) const;
   void drawReachBorder(int px, int py, bool halo = false) const;
-  void beginTargetSelect();  // collects targets, transitions mode
   void finishSelectedUnit();
   void enterEnemyTurn();  // hands the turn to the AI, starts playback
 
