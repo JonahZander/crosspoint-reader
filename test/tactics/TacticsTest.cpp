@@ -527,6 +527,41 @@ TEST(SaveState, RoundTripsMidBattle) {
   EXPECT_EQ(restored.status(), Game::Status::Playing);
 }
 
+TEST(SaveState, ResumesMidEnemyPhaseAndFinishesItOnce) {
+  // A snapshot can be taken mid-enemy-phase (the activity saves on exit in
+  // any mode). After import, driving aiStep() must finish the phase exactly
+  // once: remaining enemies act, the phase rolls over to Player, and every
+  // player unit is ready again. The importer resuming in the player phase
+  // (or requiring a second endPlayerTurn()) would hand enemies double turns.
+  Level level;
+  ASSERT_TRUE(parse(ARENA, level));
+  Game game;
+  game.start(level);
+  for (int i = 0; i < game.unitCount(); i++) {
+    if (game.unit(i).side == Side::Player) game.finishUnit(i);
+  }
+  game.endPlayerTurn();
+  ASSERT_EQ(game.phase(), Game::Phase::Enemy);
+  ASSERT_TRUE(game.aiStep().acted);  // partway through the enemy phase
+
+  static uint8_t blob[sizeof(Game)];
+  game.exportState(blob);
+  Game restored;
+  ASSERT_TRUE(restored.importState(blob));
+  EXPECT_EQ(restored.phase(), Game::Phase::Enemy);
+  EXPECT_EQ(restored.turn(), 1);
+
+  int steps = 0;
+  while (restored.aiStep().acted && steps <= MAX_UNITS) steps++;
+  EXPECT_LE(steps, MAX_UNITS);  // the phase terminated on its own
+  EXPECT_EQ(restored.phase(), Game::Phase::Player);
+  EXPECT_EQ(restored.turn(), 2);
+  for (int i = 0; i < restored.unitCount(); i++) {
+    const Unit& u = restored.unit(i);
+    if (u.alive && u.side == Side::Player) EXPECT_FALSE(u.acted) << "unit " << i;
+  }
+}
+
 TEST(SaveState, RejectsGarbage) {
   static uint8_t blob[sizeof(Game)];
   std::memset(blob, 0xAB, sizeof(blob));

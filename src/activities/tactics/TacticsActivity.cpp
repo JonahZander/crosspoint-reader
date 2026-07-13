@@ -471,6 +471,15 @@ bool TacticsActivity::loadLevel(const std::string& fileName) {
   centerCamera(cursorX, cursorY);
   std::snprintf(statusLine, sizeof(statusLine), "%s", level->name);
   mode = Mode::Cursor;
+  if (game->phase() == Game::Phase::Enemy) {
+    // The save was taken mid-enemy-phase (onExit saves in any mode). Resume
+    // the AI playback; landing in Cursor here would soft-lock the player
+    // (every unit acted) and Pause -> End Turn would hand the enemies a
+    // double turn via a second endPlayerTurn().
+    lastAiStepMs = millis();
+    std::snprintf(statusLine, sizeof(statusLine), "%s", tr(STR_TACTICS_ENEMY_TURN));
+    mode = Mode::EnemyTurn;
+  }
   nextRefreshFull = true;  // fresh board on a clean panel
   turnsSinceFullRefresh = 0;
   return true;
