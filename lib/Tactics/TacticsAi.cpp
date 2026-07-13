@@ -168,10 +168,16 @@ Game::AiAction Game::executeAiUnit(const int unitIdx) {
   }
 
   if (bestTarget >= 0) {
-    u.x = static_cast<int8_t>(bestX);
-    u.y = static_cast<int8_t>(bestY);
+    // Through moveUnit, not a raw position write: disengaging from an
+    // adjacent player unit costs the AI a parting blow, same as it costs
+    // the player (the destination is already validated by the reach scan).
+    if (!moveUnit(unitIdx, bestX, bestY)) u.acted = true;  // never stall the phase
     act.toX = u.x;
     act.toY = u.y;
+    if (!u.alive) {  // cut down while disengaging; the attack never happens
+      act.visible = isVisible(act.fromX, act.fromY) || isVisible(u.x, u.y);
+      return act;
+    }
     const Forecast f = forecast(unitIdx, bestTarget);
     act.target = static_cast<int8_t>(bestTarget);
     act.damage = f.damageToTarget;
@@ -203,9 +209,11 @@ Game::AiAction Game::executeAiUnit(const int unitIdx) {
       }
     }
   }
-  u.x = static_cast<int8_t>(bestX);
-  u.y = static_cast<int8_t>(bestY);
-  u.acted = true;
+  // Same parting-blow parity as the attack path. (In practice an adjacent
+  // player unit always yields an attack candidate above, so approach moves
+  // rarely disengage — but the engine, not the AI, owns that rule.)
+  moveUnit(unitIdx, bestX, bestY);
+  u.acted = true;  // harmless if the unit died mid-retreat: dead units are skipped
   act.toX = u.x;
   act.toY = u.y;
   act.visible = isVisible(act.fromX, act.fromY) || isVisible(u.x, u.y);
