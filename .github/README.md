@@ -29,7 +29,7 @@ Open it from the home menu: **Home → Tactics**.
   *The Deep Road* and *The Broken Crown*.
 - **Playtested by a bot in CI.** A threat-aware bot plays every shipped level
   on every test run and asserts survivor margins — "unwinnable" and "too easy"
-  both fail the build. 53 host tests run in ~11 ms.
+  both fail the build. The tactics suite has 61 host tests.
 
 | | |
 |---|---|

@@ -1,4 +1,18 @@
-# CrossPoint Reader
+# CrossPoint Tactics
+
+This fork turns [CrossPoint Reader](https://github.com/crosspoint-reader/crosspoint-reader)
+firmware for the Xteink X4 e-reader into a turn-based tactics game. It adds
+deterministic combat, fog of war, flanking, zones of control, two story
+campaigns, battle save/resume, a desktop simulator, and a bot that playtests
+every shipped level.
+
+Open the game from **Home > Tactics**. The tactics code lives in
+`lib/Tactics/`, `src/activities/tactics/`, `data/tactics/`, and
+`test/tactics/`. See [the tactics level guide](docs/tactics-levels.md) to
+author levels and [the branch README](.github/README.md) for the full project
+overview.
+
+## Upstream CrossPoint Reader
 
 [![Fund contributors](https://img.shields.io/badge/%F0%9F%91%91_Fund_contributors-royalty.dev-BB953A?style=for-the-badge&labelColor=1a1a1a)](https://app.royalty.dev/crosspoint-reader/crosspoint-reader)
 
