@@ -125,21 +125,21 @@ class Game {
   int nextAiUnit();
   AiAction executeAiUnit(int unitIdx);
 
-  Level level_;
-  Unit units_[MAX_UNITS];
+  Level level_{};
+  Unit units_[MAX_UNITS]{};
   int unitCount_ = 0;
   int turn_ = 1;
   Status status_ = Status::Playing;
   Phase phase_ = Phase::Player;
 
-  uint8_t reach_[MAX_TILES];     // movement cost to tile, 0xFF unreachable
-  int8_t reachUnit_ = -1;        // unit computeReach() was run for
-  uint8_t approach_[MAX_TILES];  // AI approach field
+  uint8_t reach_[MAX_TILES]{};     // movement cost to tile, 0xFF unreachable
+  int8_t reachUnit_ = -1;          // unit computeReach() was run for
+  uint8_t approach_[MAX_TILES]{};  // AI approach field
   bool approachValid_ = false;
   bool approachForFlyer_ = false;
-  uint8_t visible_[MAX_TILES / 8];
-  uint8_t explored_[MAX_TILES / 8];
-  uint8_t danger_[MAX_TILES / 8];
+  uint8_t visible_[MAX_TILES / 8]{};
+  uint8_t explored_[MAX_TILES / 8]{};
+  uint8_t danger_[MAX_TILES / 8]{};
 };
 
 }  // namespace Tactics

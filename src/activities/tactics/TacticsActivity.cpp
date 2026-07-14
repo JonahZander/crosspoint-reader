@@ -378,25 +378,24 @@ void TacticsActivity::loadCompleted() {
   if (size == 0 || size > 4096) return;
   const auto buf = makeUniqueNoThrow<char[]>(size + 1);
   if (!buf) return;
-  if (file.read(buf.get(), size) != static_cast<int>(size)) return;
-  buf[size] = '\0';
+  char* const contents = buf.get();
+  if (file.read(contents, size) != static_cast<int>(size)) return;
+  contents[size] = '\0';
   completedFiles.reserve(8);
   size_t start = 0;
   for (size_t i = 0; i <= size; i++) {
-    if (i == size || buf[i] == '\n') {
+    if (i == size || contents[i] == '\n') {
       size_t len = i - start;
-      while (len > 0 && buf[start + len - 1] == '\r') len--;
-      if (len > 0) completedFiles.emplace_back(buf.get() + start, len);
+      while (len > 0 && contents[start + len - 1] == '\r') len--;
+      if (len > 0) completedFiles.emplace_back(contents + start, len);
       start = i + 1;
     }
   }
 }
 
 bool TacticsActivity::isCompleted(const std::string& fileName) const {
-  for (const auto& f : completedFiles) {
-    if (f == fileName) return true;
-  }
-  return false;
+  return std::any_of(completedFiles.begin(), completedFiles.end(),
+                     [&fileName](const std::string& completedFile) { return completedFile == fileName; });
 }
 
 void TacticsActivity::markCompleted(const std::string& fileName) {
